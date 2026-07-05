@@ -3360,16 +3360,29 @@ document.addEventListener('input', function(e) {
   if (ids.indexOf(e.target.id) !== -1) siUpdateSummary();
 });
 </script></template>
-  <template id="tpl-stock-out">     <div class="pb-4">
+  <template id="tpl-stock-out">
+<div class="pb-4">
   <div class="page-header">
     <h1>เบิกของออก</h1>
     <p>บันทึกการเบิกเวชภัณฑ์ออกจากคลัง (FEFO)</p>
   </div>
 
   <div class="px-4 mt-4 space-y-4">
-    <!-- Barcode Scan -->
-    <div class="bg-white rounded-2xl p-4 shadow-sm">
-      <div class="text-sm font-semibold text-gray-700 mb-3">สแกนสินค้า</div>
+    <!-- Tabs: สแกน / เลือกจากรายการ -->
+    <div class="so-tabs">
+      <button class="so-tab active" data-tab="scan" onclick="soSwitchTab('scan')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7V5a1 1 0 011-1h2M4 17v2a1 1 0 001 1h2m10-16h2a1 1 0 011 1v2m-3 14h2a1 1 0 001-1v-2M7 12h10"/></svg>
+        สแกน
+      </button>
+      <button class="so-tab" data-tab="list" onclick="soSwitchTab('list')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        เลือกจากรายการ
+      </button>
+    </div>
+
+    <!-- Tab panel: สแกน -->
+    <div id="soTabScan" class="bg-white rounded-2xl p-4 shadow-sm">
+      <div class="text-sm font-semibold text-gray-700 mb-3">สแกน / กรอกบาร์โค้ด</div>
       <div class="flex gap-2">
         <input type="text" id="soBarcode" class="form-input flex-1"
                placeholder="สแกนหรือกรอกบาร์โค้ด"
@@ -3390,6 +3403,15 @@ document.addEventListener('input', function(e) {
         </button>
       </div>
       <p id="soBarcodeError" class="form-error"></p>
+    </div>
+
+    <!-- Tab panel: เลือกจากรายการ -->
+    <div id="soTabList" class="bg-white rounded-2xl p-4 shadow-sm hidden">
+      <div class="text-sm font-semibold text-gray-700 mb-3">เลือกยาจากรายการ</div>
+      <input type="text" id="soListSearch" class="form-input" placeholder="พิมพ์ชื่อยา / บาร์โค้ด / SKU..."
+             oninput="filterSoProductList()">
+      <div id="soProductList" class="mt-3 space-y-1" style="max-height:340px;overflow-y:auto;"></div>
+      <div id="soListEmpty" class="empty-state hidden" style="padding:28px 12px;"><p>ไม่พบรายการ</p></div>
     </div>
 
     <!-- Product Info -->
@@ -3466,10 +3488,72 @@ document.addEventListener('input', function(e) {
   </div>
 </div>
 
+<style>
+  .so-tabs{ display:flex; gap:6px; background:rgba(120,120,128,.12); padding:4px; border-radius:14px; }
+  .so-tab{ flex:1; padding:10px; border:0; background:transparent; border-radius:10px; font-family:inherit;
+    font-weight:600; font-size:14px; color:var(--text-2); cursor:pointer; display:flex; align-items:center;
+    justify-content:center; gap:7px; transition:background .2s, color .2s, box-shadow .2s; -webkit-tap-highlight-color:transparent; }
+  .so-tab svg{ width:18px; height:18px; }
+  .so-tab.active{ background:#fff; color:var(--text); box-shadow:var(--shadow-sm); }
+  .so-prod{ width:100%; text-align:left; padding:10px 12px; border:1px solid var(--hairline); border-radius:12px;
+    background:#fff; cursor:pointer; transition:border-color .15s, background .15s; display:block; font-family:inherit; }
+  .so-prod:hover{ border-color:rgba(10,132,255,.5); background:#f5faff; }
+</style>
+
 <script>
 var soCurrentProduct  = null;
 var soSelectedLot     = null;
 var soAvailableLots   = [];
+var soProducts        = null; // แคชรายการยาสำหรับแท็บ "เลือกจากรายการ"
+
+// ---- Tabs ----
+function soSwitchTab(tab){
+  document.querySelectorAll('.so-tab').forEach(function(b){ b.classList.toggle('active', b.dataset.tab===tab); });
+  document.getElementById('soTabScan').classList.toggle('hidden', tab!=='scan');
+  document.getElementById('soTabList').classList.toggle('hidden', tab!=='list');
+  if(tab==='list' && soProducts===null) loadSoProductList();
+}
+
+function loadSoProductList(){
+  showLoading('กำลังโหลดรายการยา...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      hideLoading();
+      soProducts = (res && res.data ? res.data.filter(function(p){return p.active;}) : []);
+      soProducts.sort(function(a,b){ return String(a.productName).localeCompare(String(b.productName),'th'); });
+      renderSoProductList(soProducts);
+    })
+    .withFailureHandler(function(err){ hideLoading(); showToast('โหลดรายการยาไม่สำเร็จ: '+(err&&err.message||''), 'error'); })
+    .getProducts();
+}
+
+function renderSoProductList(list){
+  var box=document.getElementById('soProductList'), empty=document.getElementById('soListEmpty');
+  if(!list || !list.length){ box.innerHTML=''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  box.innerHTML = list.map(function(p){
+    return '<button type="button" class="so-prod" onclick="soPickProduct(\''+escapeHtml(p.barcode)+'\')">'
+      + '<div style="font-weight:600;color:var(--text)">'+escapeHtml(p.productName)+'</div>'
+      + '<div style="font-size:12px;color:var(--text-2);margin-top:2px">'+escapeHtml(p.barcode)+' · หน่วย: '+escapeHtml(p.unit||'-')+'</div>'
+      + '</button>';
+  }).join('');
+}
+
+function filterSoProductList(){
+  if(soProducts===null) return;
+  var q=(document.getElementById('soListSearch').value||'').toLowerCase().trim();
+  if(!q){ renderSoProductList(soProducts); return; }
+  renderSoProductList(soProducts.filter(function(p){
+    return String(p.productName).toLowerCase().indexOf(q)!==-1
+        || String(p.barcode).toLowerCase().indexOf(q)!==-1
+        || String(p.sku||'').toLowerCase().indexOf(q)!==-1;
+  }));
+}
+
+function soPickProduct(barcode){
+  document.getElementById('soBarcode').value = barcode;
+  searchProductForOut();
+}
 
 function searchProductForOut() {
   const barcode = document.getElementById('soBarcode').value.trim();
@@ -3485,7 +3569,7 @@ function searchProductForOut() {
     .withSuccessHandler(function(productResult) {
       if (!productResult.success) {
         hideLoading();
-        Swal.fire({ icon: 'warning', title: 'ไม่ยาและเวชภัณฑ์', text: productResult.message, confirmButtonColor: '#2563eb' });
+        Swal.fire({ icon: 'warning', title: 'ไม่พบยาและเวชภัณฑ์', text: productResult.message, confirmButtonColor: '#2563eb' });
         return;
       }
       soCurrentProduct = productResult.data;
@@ -3522,6 +3606,7 @@ function searchProductForOut() {
           } else {
             renderLots(soAvailableLots);
           }
+          document.getElementById('soProductInfo').scrollIntoView({ behavior: 'smooth', block: 'start' });
         })
         .withFailureHandler(function(err) {
           hideLoading();
@@ -3699,7 +3784,8 @@ function submitStockOut() {
       .saveTransaction(data);
   });
 }
-</script></template>
+</script>
+</template>
   <template id="tpl-stock-table">   <div class="pb-4">
   <div class="page-header">
     <div class="flex items-center justify-between">
