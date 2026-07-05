@@ -855,13 +855,21 @@ function submitInitialStock(){
         <h1>แบบฟอร์มเบิกยาประจำเดือน</h1>
         <p>กรอกจำนวน “เบิก” รายตัว (ดูยอดจ่ายรวม + คงเหลือประกอบ) แล้วสร้างรายงาน Excel</p>
       </div>
-      <button id="mfBtn" class="btn btn-success" onclick="generateMonthlyForm()">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-        </svg>
-        สร้างและดาวน์โหลด Excel
-      </button>
+      <div class="flex items-center gap-2">
+        <button id="mfSaveBtn" class="btn btn-primary" onclick="saveRequisitionEntries()">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          บันทึกจำนวนเบิก
+        </button>
+        <button id="mfBtn" class="btn btn-success" onclick="generateMonthlyForm()">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+          </svg>
+          สร้าง Excel
+        </button>
+      </div>
     </div>
   </div>
 
@@ -874,8 +882,8 @@ function submitInitialStock(){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
         <div><label class="form-label">อำเภอ</label><input id="mfAmphoe" class="form-input" placeholder="อำเภอ"></div>
         <div><label class="form-label">จังหวัด</label><input id="mfChangwat" class="form-input" placeholder="จังหวัด"></div>
-        <div><label class="form-label">ประจำเดือน</label><select id="mfMonth" class="form-input"></select></div>
-        <div><label class="form-label">ปี (พ.ศ.)</label><input id="mfYear" type="number" class="form-input" placeholder="พ.ศ."></div>
+        <div><label class="form-label">ประจำเดือน</label><select id="mfMonth" class="form-input" onchange="loadSavedRequisition()"></select></div>
+        <div><label class="form-label">ปี (พ.ศ.)</label><input id="mfYear" type="number" class="form-input" placeholder="พ.ศ." onchange="loadSavedRequisition()"></div>
       </div>
     </div>
   </div>
@@ -965,6 +973,53 @@ function renderMfList(products){
     });
   });
   list.innerHTML=html;
+  loadSavedRequisition(); // เติมจำนวนเบิกที่เคยบันทึกไว้ของเดือน/ปีที่เลือก
+}
+
+// ดึงจำนวนเบิกที่บันทึกไว้ (ตามเดือน/ปี) มาเติมในช่อง — เงียบถ้า backend ยังไม่รองรับ
+function loadSavedRequisition(){
+  if(!window.__mfReady) return;
+  var month=(document.getElementById('mfMonth')||{}).value||'';
+  var year=(document.getElementById('mfYear')||{}).value||'';
+  if(!month||!year) return;
+  google.script.run
+    .withSuccessHandler(function(res){
+      if(!res||!res.success) return;
+      var map=res.data||{};
+      document.querySelectorAll('#mfList .mf-bik').forEach(function(inp){
+        var v=map[inp.dataset.barcode];
+        inp.value=(v&&Number(v)>0)?v:'';
+        mfTouch(inp);
+      });
+    })
+    .withFailureHandler(function(){ /* เงียบ: อาจยังไม่ได้ deploy เวอร์ชันใหม่ */ })
+    .getRequisition(month, year);
+}
+
+// บันทึกจำนวนเบิกลงระบบ (ตามเดือน/ปี)
+function saveRequisitionEntries(){
+  if(!window.__mfReady){ showToast('กำลังโหลดข้อมูล กรุณารอสักครู่','warning'); return; }
+  var month=document.getElementById('mfMonth').value||'';
+  var year=(document.getElementById('mfYear').value||'').trim();
+  if(!month||!year){ showToast('กรุณาเลือกเดือนและปี','warning'); return; }
+  var nameMap={}; (window.__mfProducts||[]).forEach(function(p){ nameMap[p.barcode]=p.productName; });
+  var items=[];
+  document.querySelectorAll('#mfList .mf-bik').forEach(function(inp){
+    var q=Number(inp.value)||0; if(q>0) items.push({ barcode:inp.dataset.barcode, qty:q, productName:nameMap[inp.dataset.barcode]||'' });
+  });
+  if(!items.length){ showToast('ยังไม่ได้กรอกจำนวนเบิก','warning'); return; }
+  showLoading('กำลังบันทึกจำนวนเบิก...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      hideLoading();
+      if(res&&res.success) showToast(res.message,'success');
+      else showToast((res&&res.message)||'บันทึกไม่สำเร็จ','error');
+    })
+    .withFailureHandler(function(err){
+      hideLoading();
+      showToast('บันทึกไม่สำเร็จ: '+(err&&err.message||'')+' (ต้อง deploy เวอร์ชันใหม่ของ GAS)','error');
+    })
+    .saveRequisition({ month:month, year:year, items:items });
 }
 
 function mfTouch(inp){ var c=inp.closest('[data-mf-row]'); if(!c) return; if((Number(inp.value)||0)>0) c.classList.add('mf-has'); else c.classList.remove('mf-has'); }
