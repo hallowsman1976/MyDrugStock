@@ -850,123 +850,150 @@ function submitInitialStock(){
   <template id="tpl-monthly-form">
 <div class="pb-4">
   <div class="page-header">
-    <h1>แบบฟอร์มเบิกยาประจำเดือน</h1>
-    <p>สร้างไฟล์ Excel รายการยาพร้อมยอดคงเหลือปัจจุบัน สำหรับเบิกประจำเดือน (จัดกลุ่มตามหมวดหมู่ พิมพ์ A4)</p>
-  </div>
-
-  <div class="card" style="max-width:640px;margin:14px 16px;padding:20px;">
-    <div style="display:grid;grid-template-columns:1fr;gap:14px;">
+    <div class="flex items-center justify-between gap-3 flex-wrap">
       <div>
-        <label class="form-label">ชื่อ รพ.สต. / หน่วยงาน</label>
-        <input id="mfRpst" class="form-input" placeholder="เช่น รพ.สต.ทรายไหลแล้ง">
+        <h1>แบบฟอร์มเบิกยาประจำเดือน</h1>
+        <p>กรอกจำนวน “เบิก” รายตัว (ดูยอดจ่ายรวม + คงเหลือประกอบ) แล้วสร้างรายงาน Excel</p>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div>
-          <label class="form-label">อำเภอ</label>
-          <input id="mfAmphoe" class="form-input" placeholder="อำเภอ">
-        </div>
-        <div>
-          <label class="form-label">จังหวัด</label>
-          <input id="mfChangwat" class="form-input" placeholder="จังหวัด">
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div>
-          <label class="form-label">ประจำเดือน</label>
-          <select id="mfMonth" class="form-input"></select>
-        </div>
-        <div>
-          <label class="form-label">ปี (พ.ศ.)</label>
-          <input id="mfYear" type="number" class="form-input" placeholder="พ.ศ.">
-        </div>
-      </div>
-
-      <div id="mfInfo" style="font-size:13px;color:var(--text-2);"></div>
-
-      <button id="mfBtn" class="btn btn-success btn-lg" onclick="generateMonthlyForm()">
+      <button id="mfBtn" class="btn btn-success" onclick="generateMonthlyForm()">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
         </svg>
         สร้างและดาวน์โหลด Excel
       </button>
-      <p style="font-size:12px;color:var(--text-3);margin:0;">
-        * rate = อัตราการใช้ต่อเดือน (เฉลี่ยจากยอดจ่ายออกในระบบ) · คงเหลือยกมา = คงเหลือล่าสุด · ช่อง เบิก/จ่าย/มูลค่า เว้นให้กรอกเอง
-      </p>
     </div>
   </div>
+
+  <div class="card" style="margin:14px 16px;padding:16px;">
+    <div style="display:grid;grid-template-columns:1fr;gap:12px;">
+      <div>
+        <label class="form-label">ชื่อ รพ.สต. / หน่วยงาน</label>
+        <input id="mfRpst" class="form-input" placeholder="เช่น รพ.สต.ทรายไหลแล้ง">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">
+        <div><label class="form-label">อำเภอ</label><input id="mfAmphoe" class="form-input" placeholder="อำเภอ"></div>
+        <div><label class="form-label">จังหวัด</label><input id="mfChangwat" class="form-input" placeholder="จังหวัด"></div>
+        <div><label class="form-label">ประจำเดือน</label><select id="mfMonth" class="form-input"></select></div>
+        <div><label class="form-label">ปี (พ.ศ.)</label><input id="mfYear" type="number" class="form-input" placeholder="พ.ศ."></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin:0 16px 6px;">
+    <input id="mfSearch" class="form-input" placeholder="ค้นหายา / บาร์โค้ด / SKU..." oninput="filterMfList()">
+  </div>
+  <div class="section-title" style="display:flex;justify-content:space-between;">
+    <span id="mfCount">รายการยา</span>
+    <span style="text-transform:none;font-weight:500;color:var(--text-3)">กรอกเฉพาะตัวที่ต้องการเบิก</span>
+  </div>
+
+  <div id="mfList"></div>
+  <div id="mfEmpty" class="empty-state hidden"><p>ยังไม่มีรายการยา</p></div>
 </div>
+
+<style>
+  #mfList .card{ padding:12px 14px; margin:0 16px 8px; }
+  .mf-bik{ text-align:center; }
+  .mf-has{ box-shadow:0 0 0 2px rgba(16,185,129,.4), var(--shadow-sm) !important; }
+</style>
 
 <script>
 (function(){
   var months = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
-  window.__mfMonths = months;
   var sel = document.getElementById('mfMonth');
   if (sel && !sel.options.length){
     var now = new Date();
     months.forEach(function(m,i){ var o=document.createElement('option'); o.value=m; o.textContent=m; if(i===now.getMonth()) o.selected=true; sel.appendChild(o); });
-    var y = document.getElementById('mfYear'); if(y) y.value = now.getFullYear() + 543;
+    var y=document.getElementById('mfYear'); if(y) y.value = now.getFullYear()+543;
   }
 })();
 
+// โหลดข้อมูล: products + คงเหลือ + ยอดจ่ายรวม(จาก Transactions qtyOut) แล้ว render ตารางกรอกเบิก
 function loadMonthlyForm(){
-  var info = document.getElementById('mfInfo');
-  if (info) info.textContent = 'กำลังตรวจจำนวนรายการยา...';
-  google.script.run
-    .withSuccessHandler(function(res){
-      var n = (res && res.data ? res.data.filter(function(p){return p.active;}).length : 0);
-      if (info) info.textContent = 'พบยาที่เปิดใช้งาน ' + n + ' รายการ พร้อมสร้างฟอร์ม';
-    })
-    .withFailureHandler(function(){ if(info) info.textContent=''; })
-    .getProducts();
+  window.__mfReady = false;
+  var products=null, bal=null, txns=null, done=0;
+  showLoading('กำลังโหลดรายการยา + ยอดจ่าย...');
+  function join(){
+    if(++done<3) return;
+    hideLoading();
+    if(products===null){ showToast('โหลดข้อมูลไม่สำเร็จ','error'); return; }
+    // rate = ยอดจ่ายรวม (ผลรวม qtyOut ทั้งหมด ไม่หารเดือน)
+    var rate={};
+    (txns||[]).forEach(function(t){ if(t.status==='Void') return; var q=Number(t.qtyOut)||0; if(q>0) rate[t.barcode]=(rate[t.barcode]||0)+q; });
+    window.__mfProducts = products.filter(function(p){return p.active;});
+    window.__mfBal = bal || {};
+    window.__mfRate = rate;
+    window.__mfReady = true;
+    renderMfList(window.__mfProducts);
+  }
+  google.script.run.withSuccessHandler(function(r){ products=(r&&r.success)?(r.data||[]):[]; join(); }).withFailureHandler(function(){ products=null; join(); }).getProducts();
+  google.script.run.withSuccessHandler(function(r){ bal={}; ((r&&r.data)||[]).forEach(function(s){ bal[s.barcode]=(bal[s.barcode]||0)+(Number(s.qtyBalance)||0); }); join(); }).withFailureHandler(function(){ bal={}; join(); }).getStockOnHand({});
+  google.script.run.withSuccessHandler(function(r){ txns=(r&&r.data)?r.data:[]; join(); }).withFailureHandler(function(){ txns=[]; join(); }).getTransactions({limit:100000});
+}
+
+function renderMfList(products){
+  var list=document.getElementById('mfList'), empty=document.getElementById('mfEmpty'), count=document.getElementById('mfCount');
+  var bal=window.__mfBal||{}, rate=window.__mfRate||{};
+  if(count) count.textContent='รายการยา ('+products.length+')';
+  if(!products.length){ list.innerHTML=''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+
+  // group by category
+  var order=[], groups={};
+  products.forEach(function(p){ var c=(p.category||'').trim()||'อื่น ๆ'; if(!groups[c]){groups[c]=[];order.push(c);} groups[c].push(p); });
+
+  var html='';
+  order.forEach(function(cat){
+    html+='<div class="section-title">'+escapeHtml(cat)+'</div>';
+    groups[cat].slice().sort(function(a,b){return String(a.productName).localeCompare(String(b.productName),'th');}).forEach(function(p){
+      var r=rate[p.barcode]||0, b=bal[p.barcode]||0, key=(p.productName+' '+p.barcode+' '+(p.sku||'')).toLowerCase();
+      html+=''
+        +'<div class="card" data-mf-row data-key="'+escapeHtml(key)+'">'
+        +  '<div class="flex items-center justify-between gap-3">'
+        +    '<div style="min-width:0">'
+        +      '<div style="font-weight:600;color:var(--text)">'+escapeHtml(p.productName)+'</div>'
+        +      '<div style="font-size:12px;color:var(--text-2);margin-top:2px">'+escapeHtml(p.barcode)
+        +        ' · <span class="chip chip-blue">จ่ายรวม '+r+'</span>'
+        +        ' <span class="chip '+(b>0?'chip-green':'chip-gray')+'">คงเหลือ '+b+' '+escapeHtml(p.unit||'')+'</span></div>'
+        +    '</div>'
+        +    '<div style="width:110px;flex:none">'
+        +      '<input type="number" min="0" step="1" class="form-input mf-bik" data-barcode="'+escapeHtml(p.barcode)+'" placeholder="เบิก" oninput="mfTouch(this)">'
+        +    '</div>'
+        +  '</div>'
+        +'</div>';
+    });
+  });
+  list.innerHTML=html;
+}
+
+function mfTouch(inp){ var c=inp.closest('[data-mf-row]'); if(!c) return; if((Number(inp.value)||0)>0) c.classList.add('mf-has'); else c.classList.remove('mf-has'); }
+
+function filterMfList(){
+  var q=(document.getElementById('mfSearch').value||'').toLowerCase().trim();
+  document.querySelectorAll('#mfList [data-mf-row]').forEach(function(c){ c.style.display=(!q||(c.dataset.key||'').indexOf(q)!==-1)?'':'none'; });
+  // ซ่อน section-title ที่ไม่มีลูกโชว์
 }
 
 function ensureExcelJS(cb){
-  if (window.ExcelJS) return cb();
+  if(window.ExcelJS) return cb();
   showLoading('กำลังโหลดตัวสร้าง Excel...');
-  var s = document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
-  s.onload = function(){ cb(); };
-  s.onerror = function(){ hideLoading(); showToast('โหลดไลบรารี Excel ไม่สำเร็จ (ตรวจอินเทอร์เน็ต)', 'error'); };
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+  s.onload=function(){cb();}; s.onerror=function(){hideLoading();showToast('โหลดไลบรารี Excel ไม่สำเร็จ','error');};
   document.head.appendChild(s);
 }
 
 function generateMonthlyForm(){
-  var products = null, bal = null, txns = null, done = 0;
-  showLoading('กำลังดึงข้อมูลยา + ประวัติการจ่าย...');
-  function join(){
-    if (++done < 3) return;
-    if (products === null){ hideLoading(); showToast('ดึงข้อมูลยาไม่สำเร็จ', 'error'); return; }
-    // rate = อัตราการใช้ต่อเดือน จาก Transactions column J (qtyOut) หารจำนวนเดือนที่มีข้อมูล
-    var usage = {}, monthsSet = {};
-    (txns || []).forEach(function(t){
-      if (t.status === 'Void') return;
-      var q = Number(t.qtyOut) || 0;
-      if (q > 0) usage[t.barcode] = (usage[t.barcode] || 0) + q;
-      var d = String(t.timestamp || '').split(' ')[0].split('/'); // [dd,MM,yyyy]
-      if (d.length === 3) monthsSet[d[1] + '/' + d[2]] = 1;
-    });
-    var nMonths = Math.max(Object.keys(monthsSet).length, 1);
-    var rate = {};
-    Object.keys(usage).forEach(function(bc){ rate[bc] = usage[bc] / nMonths; });
-    buildMonthlyWorkbook(products.filter(function(p){return p.active;}), bal || {}, rate);
-  }
-  google.script.run
-    .withSuccessHandler(function(r){ products = (r && r.success) ? (r.data||[]) : []; join(); })
-    .withFailureHandler(function(){ products = null; join(); })
-    .getProducts();
-  google.script.run
-    .withSuccessHandler(function(r){ bal = {}; ((r&&r.data)||[]).forEach(function(s){ bal[s.barcode]=(bal[s.barcode]||0)+(Number(s.qtyBalance)||0); }); join(); })
-    .withFailureHandler(function(){ bal = {}; join(); })
-    .getStockOnHand({});
-  google.script.run
-    .withSuccessHandler(function(r){ txns = (r && r.data) ? r.data : []; join(); })
-    .withFailureHandler(function(){ txns = []; join(); })
-    .getTransactions({ limit: 100000 });
+  if(!window.__mfReady){ showToast('กำลังโหลดข้อมูล กรุณารอสักครู่','warning'); return; }
+  // เก็บจำนวนเบิกที่กรอก
+  var bik={}, nBik=0;
+  document.querySelectorAll('#mfList .mf-bik').forEach(function(inp){ var v=Number(inp.value)||0; if(v>0){ bik[inp.dataset.barcode]=v; nBik++; } });
+  buildMonthlyWorkbook(window.__mfProducts, window.__mfBal||{}, window.__mfRate||{}, bik, nBik);
 }
 
-function buildMonthlyWorkbook(products, balMap, rateMap){
-  rateMap = rateMap || {};
+function buildMonthlyWorkbook(products, balMap, rateMap, bikMap, nBik){
+  rateMap=rateMap||{}; bikMap=bikMap||{};
   ensureExcelJS(function(){
     try{
       showLoading('กำลังสร้างไฟล์ Excel...');
@@ -984,7 +1011,7 @@ function buildMonthlyWorkbook(products, balMap, rateMap){
         headerFooter:{ oddFooter:'&Cหน้า &P / &N' }
       });
       var widths=[5,11,34,10,9,10,8,8,11,13];
-      ws.columns = widths.map(function(w){return {width:w};});
+      ws.columns=widths.map(function(w){return {width:w};});
       var NCOL=10, LAST='J';
       var thin={style:'thin',color:{argb:'FF000000'}};
       var border={top:thin,left:thin,bottom:thin,right:thin};
@@ -998,13 +1025,12 @@ function buildMonthlyWorkbook(products, balMap, rateMap){
       f(c,{size:15}); ctr(c); ws.getRow(2).height=24;
       ws.mergeCells('A3:J3'); c=ws.getCell('A3'); c.value='ประจำเดือน '+(month||'........................')+'   พ.ศ. '+(year||'..............'); f(c,{size:15}); c.alignment={horizontal:'center',vertical:'middle'}; ws.getRow(3).height=24;
 
-      var headers=['ลำดับ','รหัส','รายการเวชภัณฑ์ (ชื่อสามัญทางยา)','ขนาดบรรจุ\n(PACK)','rate\n(อัตราใช้/เดือน)','คงเหลือ\nยกมา','เบิก','จ่าย','มูลค่า','หมายเหตุ'];
+      var headers=['ลำดับ','รหัส','รายการเวชภัณฑ์ (ชื่อสามัญทางยา)','ขนาดบรรจุ\n(PACK)','rate\n(จ่ายรวม)','คงเหลือ\nยกมา','เบิก','จ่าย','มูลค่า','หมายเหตุ'];
       var hr=ws.getRow(5);
       headers.forEach(function(h,i){var cell=hr.getCell(i+1);cell.value=h;f(cell,{size:13,bold:true});ctr(cell,true);cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFBDD7EE'}};cell.border=border;});
       hr.height=34;
       var HEADER_ROW=5, r=6;
 
-      // group by category (encounter order)
       var order=[], groups={};
       products.forEach(function(p){ var cat=(p.category||'').trim()||'อื่น ๆ'; if(!groups[cat]){groups[cat]=[];order.push(cat);} groups[cat].push(p); });
 
@@ -1014,19 +1040,16 @@ function buildMonthlyWorkbook(products, balMap, rateMap){
         sc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFDDEBF7'}};
         for(var ci=1;ci<=NCOL;ci++) ws.getCell(r,ci).border=border;
         ws.getRow(r).height=22; r++;
-        var list=groups[cat].slice().sort(function(a,b){return String(a.productName).localeCompare(String(b.productName),'th');});
-        list.forEach(function(p,idx){
+        groups[cat].slice().sort(function(a,b){return String(a.productName).localeCompare(String(b.productName),'th');}).forEach(function(p,idx){
           var row=ws.getRow(r);
-          // A ลำดับ | B รหัส | C รายการ | D PACK | E rate(อัตราใช้/เดือน) | F คงเหลือยกมา | G เบิก | H จ่าย | I มูลค่า(ว่าง) | J หมายเหตุ
-          var rv=rateMap[p.barcode]; var rateVal=(rv&&rv>0)?(Math.round(rv*10)/10):'';
-          var vals=[ idx+1, (p.sku||p.barcode||''), (p.productName||''), (p.packSize||p.unit||''), rateVal, (balMap[p.barcode]||0), '', '', '', '' ];
-          for(var ci=1;ci<=NCOL;ci++){ var cell=row.getCell(ci); cell.value=vals[ci-1]; cell.border=border; f(cell,{size:14});
-            if(ci===3) lft(cell); else ctr(cell); }
+          var rv=rateMap[p.barcode]||0, bv=bikMap[p.barcode]||0;
+          // A ลำดับ|B รหัส|C รายการ|D PACK|E rate(จ่ายรวม)|F คงเหลือยกมา|G เบิก(กรอก)|H จ่าย(ว่าง)|I มูลค่า(ว่าง)|J หมายเหตุ
+          var vals=[ idx+1, (p.sku||p.barcode||''), (p.productName||''), (p.packSize||p.unit||''), (rv>0?rv:''), (balMap[p.barcode]||0), (bv>0?bv:''), '', '', '' ];
+          for(var ci=1;ci<=NCOL;ci++){ var cell=row.getCell(ci); cell.value=vals[ci-1]; cell.border=border; f(cell,{size:14}); if(ci===3) lft(cell); else ctr(cell); }
           row.height=20; r++;
         });
       });
 
-      // signatures
       r+=2;
       var groupsSig=[[1,4,'ลงชื่อ ...................................... ผู้จัดทำ / ผู้เบิก'],[5,7,'ลงชื่อ ...................................... ผู้จ่าย / ผู้ตรวจสอบ'],[8,10,'ลงชื่อ ...................................... ผู้อนุมัติ']];
       function sig(text,c1,c2,rr){ ws.mergeCells(rr,c1,rr,c2); var cell=ws.getCell(rr,c1); cell.value=text; f(cell,{size:14}); ctr(cell); }
@@ -1045,7 +1068,7 @@ function buildMonthlyWorkbook(products, balMap, rateMap){
         document.body.appendChild(a); a.click();
         setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1500);
         hideLoading();
-        showToast('สร้างไฟล์สำเร็จ ('+products.length+' รายการ)', 'success');
+        showToast('สร้างไฟล์สำเร็จ (กรอกเบิก '+(nBik||0)+' รายการ)', 'success');
       }).catch(function(e){ hideLoading(); showToast('สร้างไฟล์ไม่สำเร็จ: '+e.message,'error'); });
     }catch(err){ hideLoading(); showToast('เกิดข้อผิดพลาด: '+err.message,'error'); }
   });
