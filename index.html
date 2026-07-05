@@ -3172,9 +3172,9 @@ document.addEventListener('input', function(e) {
 </div>
 
 <script>
-let soCurrentProduct  = null;
-let soSelectedLot     = null;
-let soAvailableLots   = [];
+var soCurrentProduct  = null;
+var soSelectedLot     = null;
+var soAvailableLots   = [];
 
 function searchProductForOut() {
   const barcode = document.getElementById('soBarcode').value.trim();
@@ -4503,7 +4503,7 @@ function _updateHistSummary(data) {
 </div>
 
 <script>
-let allAdminProducts = [];
+var allAdminProducts = [];
 
 function loadAdminProducts() {
   showLoading('กำลังโหลดสินค้า...');
@@ -4720,8 +4720,8 @@ function confirmDeleteProduct(productId, productName) {
 </div>
 
 <script>
-let isEditingUser = false;
-let allUsers = [];
+var isEditingUser = false;
+var allUsers = [];
 
 function loadAdminUsers() {
   showLoading('กำลังโหลดผู้ใช้...');
