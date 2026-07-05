@@ -507,6 +507,7 @@ function checkPermission(pageName) {
     'dashboard':      ['Admin','Staff','Viewer','Purchasing'],
     'add-product':    ['Admin','Staff'],
     'initial-stock':  ['Admin','Staff'],
+    'monthly-form':   ['Admin','Staff'],
     'stock-in':       ['Admin','Staff'],
     'stock-out':      ['Admin','Staff'],
     'stock-table':    ['Admin','Staff','Viewer','Purchasing'],
@@ -539,6 +540,7 @@ function switchPage(pageName) {
     'dashboard':      'แดชบอร์ด',
     'add-product':    'เพิ่มสินค้า',
     'initial-stock':  'ตั้งค่าสต็อกเริ่มต้น',
+    'monthly-form':   'แบบฟอร์มเบิกยาประจำเดือน',
     'stock-in':       'รับของเข้า',
     'stock-out':      'เบิกออก',
     'stock-table':    'สต็อกคงเหลือ',
@@ -574,6 +576,7 @@ function switchPage(pageName) {
     var initMap = {
       'dashboard':      'loadDashboard',
       'initial-stock':  'loadInitialStock',
+      'monthly-form':   'loadMonthlyForm',
       'stock-table':    'loadStockTable',
       'history':        'loadHistory',
       'admin-products': 'loadAdminProducts',
