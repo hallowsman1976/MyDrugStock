@@ -184,6 +184,18 @@
           <span class="text-sm font-medium">เพิ่มยาและเวชภัณฑ์</span>
         </button>
 
+        <button onclick="switchPage('initial-stock')" data-page="initial-stock"
+                data-roles="Admin,Staff"
+                class="sidebar-menu-item w-full flex items-center gap-3 px-3 py-3
+                       rounded-xl text-left text-gray-700 hover:bg-blue-50
+                       hover:text-blue-700 transition-all mb-1">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 7v10a2 2 0 002 2h12a2 2 0 002-2V7M4 7l8-4 8 4M4 7l8 4 8-4M12 11v8"/>
+          </svg>
+          <span class="text-sm font-medium">ตั้งค่าสต็อกเริ่มต้น</span>
+        </button>
+
         <button onclick="switchPage('stock-in')" data-page="stock-in"
                 data-roles="Admin,Staff"
                 class="sidebar-menu-item w-full flex items-center gap-3 px-3 py-3
@@ -628,6 +640,198 @@ function showForgotPassword() {
       confirmButtonColor: '#7c3aed'
     });
   } else { alert('กรุณาติดต่อผู้ดูแลระบบเพื่อรีเซ็ตรหัสผ่าน'); }
+}
+</script>
+</template>
+  <template id="tpl-initial-stock">
+<div class="pb-4">
+  <!-- Page Header -->
+  <div class="page-header">
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div>
+        <h1>ตั้งค่าสต็อกเริ่มต้น</h1>
+        <p>กำหนดจำนวนคงคลังตั้งต้นของยาแต่ละรายการ ก่อนเริ่มใช้งานระบบ</p>
+      </div>
+      <button class="btn btn-primary" onclick="submitInitialStock()">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        บันทึกสต็อกเริ่มต้น
+      </button>
+    </div>
+  </div>
+
+  <!-- Info -->
+  <div style="margin:14px 16px 0;">
+    <div class="toast toast-info" style="animation:none;">
+      <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      <div style="font-size:13px;line-height:1.5;">
+        กรอกเฉพาะยาที่ต้องการตั้งยอดยกมา — ระบุ <b>จำนวน</b>, <b>LOT</b> และ <b>วันหมดอายุ</b> ให้ครบ
+        แล้วกด “บันทึกสต็อกเริ่มต้น” · แถวที่เว้นจำนวนว่างจะถูกข้าม
+      </div>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div style="margin:14px 16px 6px;">
+    <input id="isSearch" class="form-input" placeholder="ค้นหายา / บาร์โค้ด / SKU..."
+           oninput="filterInitialStock()">
+  </div>
+
+  <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+    <span id="isCount">รายการยา</span>
+  </div>
+
+  <!-- List -->
+  <div id="isList"></div>
+  <div id="isEmpty" class="empty-state hidden">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+        d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+    </svg>
+    <p>ยังไม่มีรายการยา — กรุณาเพิ่มสินค้าก่อน</p>
+  </div>
+</div>
+
+<style>
+  .is-grid{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; margin-top:10px; }
+  @media (max-width:520px){ .is-grid{ grid-template-columns:1fr; } }
+  #isList .card{ padding:14px; margin:0 16px 10px; }
+  .is-hasqty{ box-shadow:0 0 0 2px rgba(10,132,255,.35), var(--shadow-sm) !important; }
+</style>
+
+<script>
+function loadInitialStock() {
+  showLoading('กำลังโหลดรายการยา...');
+  // ยิง 2 คำขอพร้อมกัน (products + คงเหลือ) แล้วรวมผลเมื่อครบ — เร็วกว่าเรียงต่อกัน
+  var products = null, bal = null, done = 0, failed = false;
+  function join() {
+    if (++done < 2) return;
+    hideLoading();
+    if (products === null) { showToast('โหลดสินค้าไม่สำเร็จ', 'error'); return; }
+    window.__isBal = bal || {};
+    renderInitialStock(products.filter(function(p){ return p.active; }));
+  }
+  google.script.run
+    .withSuccessHandler(function(prodRes) { products = (prodRes && prodRes.success) ? (prodRes.data || []) : []; join(); })
+    .withFailureHandler(function() { products = null; join(); })
+    .getProducts();
+  google.script.run
+    .withSuccessHandler(function(stockRes) {
+      bal = {};
+      ((stockRes && stockRes.data) || []).forEach(function(s){ bal[s.barcode] = (bal[s.barcode] || 0) + (Number(s.qtyBalance) || 0); });
+      join();
+    })
+    .withFailureHandler(function() { bal = {}; join(); })
+    .getStockOnHand({});
+}
+
+function renderInitialStock(products) {
+  var list  = document.getElementById('isList');
+  var empty = document.getElementById('isEmpty');
+  var count = document.getElementById('isCount');
+  var bal   = window.__isBal || {};
+
+  if (count) count.textContent = 'รายการยา (' + products.length + ')';
+
+  if (!products.length) {
+    list.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+
+  list.innerHTML = products.map(function(p){
+    var b   = bal[p.barcode] || 0;
+    var key = (p.productName + ' ' + p.barcode + ' ' + (p.sku||'')).toLowerCase();
+    var balHtml = b > 0
+      ? '<span class="chip chip-green">คงเหลือ ' + b + ' ' + escapeHtml(p.unit||'') + '</span>'
+      : '<span class="chip chip-gray">ยังไม่มีสต็อก</span>';
+    return ''
+      + '<div class="card" data-init-row data-key="' + escapeHtml(key) + '" data-barcode="' + escapeHtml(p.barcode) + '" data-unit="' + escapeHtml(p.unit||'') + '">'
+      +   '<div class="flex items-start justify-between gap-2">'
+      +     '<div>'
+      +       '<div style="font-weight:600;color:var(--text);">' + escapeHtml(p.productName) + '</div>'
+      +       '<div style="font-size:12px;color:var(--text-2);margin-top:2px;">' + escapeHtml(p.barcode) + ' · หน่วย: ' + escapeHtml(p.unit||'-') + '</div>'
+      +     '</div>'
+      +     balHtml
+      +   '</div>'
+      +   '<div class="is-grid">'
+      +     '<input type="number" min="0" step="1" class="form-input is-qty" placeholder="จำนวนตั้งต้น" oninput="isTouch(this)">'
+      +     '<input type="text" class="form-input is-lot" placeholder="LOT NUMBER">'
+      +     '<input type="date" class="form-input is-exp">'
+      +   '</div>'
+      + '</div>';
+  }).join('');
+}
+
+// ไฮไลต์การ์ดที่กรอกจำนวนแล้ว
+function isTouch(inp){
+  var card = inp.closest('[data-init-row]');
+  if (!card) return;
+  if ((Number(inp.value)||0) > 0) card.classList.add('is-hasqty');
+  else card.classList.remove('is-hasqty');
+}
+
+// กรองด้วยการซ่อน/แสดง (ไม่ re-render เพื่อไม่ให้ค่าที่กรอกหาย)
+function filterInitialStock(){
+  var q = (document.getElementById('isSearch').value || '').toLowerCase().trim();
+  document.querySelectorAll('#isList [data-init-row]').forEach(function(card){
+    card.style.display = (!q || (card.dataset.key||'').indexOf(q) !== -1) ? '' : 'none';
+  });
+}
+
+function submitInitialStock(){
+  var cards = document.querySelectorAll('#isList [data-init-row]');
+  var items = [];
+  var invalid = 0;
+
+  cards.forEach(function(card){
+    var qty = Number(card.querySelector('.is-qty').value) || 0;
+    if (qty <= 0) return;
+    var lot = (card.querySelector('.is-lot').value || '').trim();
+    var exp = card.querySelector('.is-exp').value; // yyyy-mm-dd
+    if (lot.length < 2 || !exp) { invalid++; card.classList.add('is-hasqty'); return; }
+    items.push({ barcode: card.dataset.barcode, qty: qty, lotNumber: lot, expiryDate: exp });
+  });
+
+  if (invalid > 0) {
+    Swal.fire({ icon:'warning', title:'ข้อมูลไม่ครบ',
+      text: 'มี ' + invalid + ' รายการที่กรอกจำนวนแล้วแต่ยังไม่ได้ระบุ LOT หรือวันหมดอายุ',
+      confirmButtonColor:'#7c3aed' });
+    return;
+  }
+  if (!items.length) {
+    showToast('กรุณากรอกจำนวนอย่างน้อย 1 รายการ', 'warning');
+    return;
+  }
+
+  Swal.fire({
+    icon:'question', title:'ยืนยันตั้งค่าสต็อกเริ่มต้น?',
+    html:'จะบันทึกยอดยกมาจำนวน <b>' + items.length + '</b> รายการ',
+    showCancelButton:true, confirmButtonText:'บันทึก', cancelButtonText:'ยกเลิก',
+    confirmButtonColor:'#4f46e5', cancelButtonColor:'#6b7280'
+  }).then(function(r){
+    if (!r.isConfirmed) return;
+    showLoading('กำลังบันทึกสต็อกเริ่มต้น...');
+    google.script.run
+      .withSuccessHandler(function(res){
+        hideLoading();
+        if (res && res.success) {
+          Swal.fire({ icon:'success', title:'สำเร็จ', text: res.message, timer:1800, showConfirmButton:false });
+          loadInitialStock();
+        } else {
+          showToast((res && res.message) || 'บันทึกไม่สำเร็จ', 'error');
+        }
+      })
+      .withFailureHandler(function(err){
+        hideLoading();
+        showToast('บันทึกไม่สำเร็จ: ' + (err && err.message || ''), 'error');
+      })
+      .saveInitialStock(items);
+  });
 }
 </script>
 </template>

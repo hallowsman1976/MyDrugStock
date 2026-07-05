@@ -7,62 +7,46 @@ const GAS_TOKEN_KEY   = "drugstore_api_token";
 function gasGetToken()  { try { return localStorage.getItem(GAS_TOKEN_KEY) || ''; } catch (e) { return ''; } }
 function gasSetToken(t) { try { t ? localStorage.setItem(GAS_TOKEN_KEY, t) : localStorage.removeItem(GAS_TOKEN_KEY); } catch (e) {} }
 
-window.google = window.google || {};
-window.google.script = window.google.script || {
-  run: new Proxy({}, {
-    get: function(target, propKey) {
-      if (propKey === 'withSuccessHandler') {
-        return function(handler) {
-          target.successHandler = handler;
-          return window.google.script.run;
-        };
-      }
-      if (propKey === 'withFailureHandler') {
-        return function(handler) {
-          target.failureHandler = handler;
-          return window.google.script.run;
-        };
-      }
-      return function(...args) {
-        fetch(GAS_WEB_APP_URL, {
-          method: 'POST',
-          body: JSON.stringify({
-             func: propKey,
-             args: args,
-             token: gasGetToken(),
-             apiKey: GAS_API_KEY
-          }),
-          headers: {
-            'Content-Type': 'text/plain;charset=utf-8',
-          }
-        })
-        .then(res => res.json())
-        .then(res => {
-          const ok    = res.ok !== false && !res.error;
-          const data  = ('result' in res) ? res.result : res;
-          const error = res.error || (ok ? null : 'Unknown API error');
-
-          if (!ok) {
-            if (target.failureHandler) target.failureHandler(new Error(error));
-            else console.error("GAS API Error:", error);
-          } else {
-            if (propKey === 'loginUser'  && data && data.token) gasSetToken(data.token);
-            if (propKey === 'logoutUser') gasSetToken('');
-            if (target.successHandler) target.successHandler(data);
-          }
-          target.successHandler = null;
-          target.failureHandler = null;
-        })
-        .catch(err => {
-          if (target.failureHandler) target.failureHandler(err);
-          else console.error("GAS API Catch:", err);
-          target.successHandler = null;
-          target.failureHandler = null;
-        });
-      };
+// ยิง 1 request ต่อ 1 call chain — ctx เป็นของแต่ละ chain (รองรับ nested/parallel calls)
+function gasApiCall(propKey, args, ctx) {
+  fetch(GAS_WEB_APP_URL, {
+    method: 'POST',
+    body: JSON.stringify({ func: propKey, args: args, token: gasGetToken(), apiKey: GAS_API_KEY }),
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+  })
+  .then(function(res) { return res.json(); })
+  .then(function(res) {
+    var ok    = res.ok !== false && !res.error;
+    var data  = ('result' in res) ? res.result : res;
+    var error = res.error || (ok ? null : 'Unknown API error');
+    if (!ok) {
+      if (ctx.f) ctx.f(new Error(error)); else console.error("GAS API Error:", error);
+    } else {
+      if (propKey === 'loginUser'  && data && data.token) gasSetToken(data.token);
+      if (propKey === 'logoutUser') gasSetToken('');
+      if (ctx.s) ctx.s(data);
     }
   })
-};
+  .catch(function(err) { if (ctx.f) ctx.f(err); else console.error("GAS API Catch:", err); });
+}
+
+window.google = window.google || {};
+if (!window.google.script) {
+  window.google.script = {
+    // getter: ทุกครั้งที่เข้าถึง .run จะได้ builder ใหม่ พร้อม ctx ของตัวเอง
+    get run() {
+      var ctx = { s: null, f: null };
+      var builder = new Proxy({}, {
+        get: function(_t, propKey) {
+          if (propKey === 'withSuccessHandler') return function(h) { ctx.s = h; return builder; };
+          if (propKey === 'withFailureHandler') return function(h) { ctx.f = h; return builder; };
+          return function() { gasApiCall(propKey, Array.prototype.slice.call(arguments), ctx); return builder; };
+        }
+      });
+      return builder;
+    }
+  };
+}
 // -----------------------
 // ============================================================
 // js.html - Global JavaScript (Complete Fixed Version)
@@ -522,6 +506,7 @@ function checkPermission(pageName) {
   var permissions = {
     'dashboard':      ['Admin','Staff','Viewer','Purchasing'],
     'add-product':    ['Admin','Staff'],
+    'initial-stock':  ['Admin','Staff'],
     'stock-in':       ['Admin','Staff'],
     'stock-out':      ['Admin','Staff'],
     'stock-table':    ['Admin','Staff','Viewer','Purchasing'],
@@ -553,6 +538,7 @@ function switchPage(pageName) {
   var pageTitles = {
     'dashboard':      'แดชบอร์ด',
     'add-product':    'เพิ่มสินค้า',
+    'initial-stock':  'ตั้งค่าสต็อกเริ่มต้น',
     'stock-in':       'รับของเข้า',
     'stock-out':      'เบิกออก',
     'stock-table':    'สต็อกคงเหลือ',
@@ -587,6 +573,7 @@ function switchPage(pageName) {
   setTimeout(function() {
     var initMap = {
       'dashboard':      'loadDashboard',
+      'initial-stock':  'loadInitialStock',
       'stock-table':    'loadStockTable',
       'history':        'loadHistory',
       'admin-products': 'loadAdminProducts',
