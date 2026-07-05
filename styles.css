@@ -72,7 +72,9 @@ body{ letter-spacing: -0.01em; }
 /* ============================================================
    Page Transition
    ============================================================ */
-.page-content{ animation: fadeInUp .45s var(--ease) both; }
+/* หมายเหตุ: ห้ามใส่ fill-mode 'both/forwards' ที่นี่ — transform ที่ค้างไว้จะทำให้
+   .page-content กลายเป็น containing block ของ position:fixed → modal ใน template เพี้ยน */
+.page-content{ animation: fadeInUp .45s var(--ease); }
 @keyframes fadeInUp{
   from{ opacity: 0; transform: translateY(14px); }
   to  { opacity: 1; transform: translateY(0); }
