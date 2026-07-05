@@ -1,6 +1,11 @@
 
-// --- GAS API WRAPPER ---
-const GAS_WEB_APP_URL = "YOUR_GAS_WEB_APP_URL"; // REPLACE THIS!
+// --- GAS API WRAPPER (token-based external backend) ---
+const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyfRv0OyfGBbPc-oXjZ94LhsheLFLGMC2trMnQKsiC0a1FzAF6cYLnP0IIiY81RRhYH/exec";
+const GAS_API_KEY     = "";                     // ตั้งให้ตรงกับ Script Property 'API_KEY' (เว้นว่างถ้าไม่ใช้)
+const GAS_TOKEN_KEY   = "drugstore_api_token";
+
+function gasGetToken()  { try { return localStorage.getItem(GAS_TOKEN_KEY) || ''; } catch (e) { return ''; } }
+function gasSetToken(t) { try { t ? localStorage.setItem(GAS_TOKEN_KEY, t) : localStorage.removeItem(GAS_TOKEN_KEY); } catch (e) {} }
 
 window.google = window.google || {};
 window.google.script = window.google.script || {
@@ -23,7 +28,9 @@ window.google.script = window.google.script || {
           method: 'POST',
           body: JSON.stringify({
              func: propKey,
-             args: args
+             args: args,
+             token: gasGetToken(),
+             apiKey: GAS_API_KEY
           }),
           headers: {
             'Content-Type': 'text/plain;charset=utf-8',
@@ -31,11 +38,17 @@ window.google.script = window.google.script || {
         })
         .then(res => res.json())
         .then(res => {
-          if (res.error) {
-            if (target.failureHandler) target.failureHandler(res.error);
-            else console.error("GAS API Error:", res.error);
+          const ok    = res.ok !== false && !res.error;
+          const data  = ('result' in res) ? res.result : res;
+          const error = res.error || (ok ? null : 'Unknown API error');
+
+          if (!ok) {
+            if (target.failureHandler) target.failureHandler(new Error(error));
+            else console.error("GAS API Error:", error);
           } else {
-            if (target.successHandler) target.successHandler(res.result);
+            if (propKey === 'loginUser'  && data && data.token) gasSetToken(data.token);
+            if (propKey === 'logoutUser') gasSetToken('');
+            if (target.successHandler) target.successHandler(data);
           }
           target.successHandler = null;
           target.failureHandler = null;
