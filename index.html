@@ -248,6 +248,17 @@
           <span class="text-sm font-medium">สต็อกคงเหลือ</span>
         </button>
 
+        <button onclick="switchPage('medical-supplies')" data-page="medical-supplies"
+                class="sidebar-menu-item w-full flex items-center gap-3 px-3 py-3
+                       rounded-xl text-left text-gray-700 hover:bg-blue-50
+                       hover:text-blue-700 transition-all mb-1">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 12h6m-3-3v6M5 8h14M7 8V6a2 2 0 012-2h6a2 2 0 012 2v2m-1 0v11a2 2 0 01-2 2H8a2 2 0 01-2-2V8"/>
+          </svg>
+          <span class="text-sm font-medium">เวชภัณฑ์ที่มิใช่ยา</span>
+        </button>
+
         <button onclick="switchPage('history')" data-page="history"
                 class="sidebar-menu-item w-full flex items-center gap-3 px-3 py-3
                        rounded-xl text-left text-gray-700 hover:bg-blue-50
@@ -1127,6 +1138,94 @@ function buildMonthlyWorkbook(products, balMap, rateMap, bikMap, nBik){
       }).catch(function(e){ hideLoading(); showToast('สร้างไฟล์ไม่สำเร็จ: '+e.message,'error'); });
     }catch(err){ hideLoading(); showToast('เกิดข้อผิดพลาด: '+err.message,'error'); }
   });
+}
+</script>
+</template>
+  <template id="tpl-medical-supplies">
+<div class="pb-4">
+  <div class="page-header">
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div>
+        <h1>เวชภัณฑ์ที่มิใช่ยา</h1>
+        <p>รายการวัสดุ / เวชภัณฑ์ที่มิใช่ยา (จากชีต Drug คอลัมน์ F–H)</p>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="loadMedicalSupplies()">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        รีเฟรช
+      </button>
+    </div>
+  </div>
+
+  <div style="margin:14px 16px 6px;">
+    <input id="msSearch" class="form-input" placeholder="ค้นหา..." oninput="filterMs()">
+  </div>
+  <div class="section-title"><span id="msCount">รายการ</span></div>
+
+  <div style="margin:0 16px;">
+    <div class="table-wrapper">
+      <table id="msTable">
+        <thead><tr id="msHead"></tr></thead>
+        <tbody id="msBody"></tbody>
+      </table>
+    </div>
+    <div id="msEmpty" class="empty-state hidden"><p>ไม่มีข้อมูลในชีต Drug (คอลัมน์ F–H)</p></div>
+  </div>
+</div>
+
+<style>
+  #msTable{ width:100%; border-collapse:collapse; font-size:14px; }
+  #msTable th{ background:var(--surface-2); color:var(--text-2); font-weight:600; font-size:12px;
+    text-transform:uppercase; letter-spacing:.03em; text-align:left; padding:11px 12px;
+    border-bottom:1px solid var(--hairline); white-space:nowrap; position:sticky; top:0; }
+  #msTable td{ padding:10px 12px; border-bottom:1px solid var(--hairline-2); vertical-align:middle; }
+  #msTable tbody tr:hover{ background:rgba(10,132,255,.05); }
+</style>
+
+<script>
+function loadMedicalSupplies(){
+  showLoading('กำลังโหลดเวชภัณฑ์ที่มิใช่ยา...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      hideLoading();
+      if(!res || !res.success){
+        showToast((res&&res.message)||'โหลดข้อมูลไม่สำเร็จ','error');
+        window.__msData=[]; window.__msHeaders=[]; renderMs([],[]);
+        return;
+      }
+      window.__msData = res.data||[];
+      window.__msHeaders = res.headers||[];
+      renderMs(window.__msData, window.__msHeaders);
+    })
+    .withFailureHandler(function(err){
+      hideLoading();
+      showToast('โหลดข้อมูลไม่สำเร็จ: '+(err&&err.message||'')+' (ถ้าเพิ่งเพิ่มเมนู ต้อง deploy GAS เวอร์ชันใหม่)','error');
+      window.__msData=[]; window.__msHeaders=[]; renderMs([],[]);
+    })
+    .getMedicalSupplies();
+}
+
+function renderMs(data, headers){
+  headers = headers||[];
+  var head=document.getElementById('msHead'), body=document.getElementById('msBody'),
+      empty=document.getElementById('msEmpty'), count=document.getElementById('msCount');
+  var labels=['ลำดับ', headers[0]||'คอลัมน์ F', headers[1]||'คอลัมน์ G', headers[2]||'คอลัมน์ H'];
+  head.innerHTML = labels.map(function(l,i){ return '<th'+(i===0?' style="width:56px;text-align:center"':'')+'>'+escapeHtml(l)+'</th>'; }).join('');
+  count.textContent = 'รายการ ('+data.length+')';
+  if(!data.length){ body.innerHTML=''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  body.innerHTML = data.map(function(r,i){
+    return '<tr><td style="text-align:center;color:var(--text-3)">'+(i+1)+'</td>'
+      + '<td style="font-weight:600">'+escapeHtml(r.col1)+'</td>'
+      + '<td>'+escapeHtml(r.col2)+'</td>'
+      + '<td>'+escapeHtml(r.col3)+'</td></tr>';
+  }).join('');
+}
+
+function filterMs(){
+  var q=(document.getElementById('msSearch').value||'').toLowerCase().trim();
+  var d=window.__msData||[];
+  var f=!q?d:d.filter(function(r){ return (r.col1+' '+r.col2+' '+r.col3).toLowerCase().indexOf(q)!==-1; });
+  renderMs(f, window.__msHeaders||[]);
 }
 </script>
 </template>
