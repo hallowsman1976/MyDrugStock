@@ -511,6 +511,7 @@ function checkPermission(pageName) {
     'stock-in':       ['Admin','Staff'],
     'stock-out':      ['Admin','Staff'],
     'stock-table':    ['Admin','Staff','Viewer','Purchasing'],
+    'medical-supplies':['Admin','Staff','Viewer','Purchasing'],
     'history':        ['Admin','Staff','Viewer'],
     'admin-products': ['Admin'],
     'admin-users':    ['Admin'],
@@ -544,6 +545,7 @@ function switchPage(pageName) {
     'stock-in':       'รับของเข้า',
     'stock-out':      'เบิกออก',
     'stock-table':    'สต็อกคงเหลือ',
+    'medical-supplies':'เวชภัณฑ์ที่มิใช่ยา',
     'history':        'ประวัติรายการ',
     'admin-products': 'จัดการสินค้า',
     'admin-users':    'จัดการผู้ใช้',
@@ -578,6 +580,7 @@ function switchPage(pageName) {
       'initial-stock':  'loadInitialStock',
       'monthly-form':   'loadMonthlyForm',
       'stock-table':    'loadStockTable',
+      'medical-supplies':'loadMedicalSupplies',
       'history':        'loadHistory',
       'admin-products': 'loadAdminProducts',
       'admin-users':    'loadAdminUsers',
@@ -1447,6 +1450,118 @@ document.addEventListener('keydown', function(e) {
   }
   if (e.key === 'Escape') closeCustomScanner();
 });
+
+// ============================================================
+// EXPORT ฟอร์ม Excel (ตั้งค่าเริ่มต้น / รับเข้า / เบิกออก) — ตัวสร้างร่วม
+// ใช้ getProducts + getStockOnHand (มีอยู่แล้ว) ไม่ต้องแก้ backend
+// ============================================================
+function _dfEnsureExcelJS(cb){
+  if (window.ExcelJS) return cb();
+  showLoading('กำลังโหลดตัวสร้าง Excel...');
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+  s.onload=function(){cb();};
+  s.onerror=function(){hideLoading();showToast('โหลดไลบรารี Excel ไม่สำเร็จ','error');};
+  document.head.appendChild(s);
+}
+
+window.exportDrugForm = function(cfg){
+  cfg = cfg || {};
+  showLoading('กำลังดึงข้อมูลยา...');
+  var products=null, bal=null, done=0;
+  function join(){
+    if(++done<2) return;
+    if(products===null){ hideLoading(); showToast('ดึงข้อมูลไม่สำเร็จ','error'); return; }
+    _dfBuild(cfg, products.filter(function(p){return p.active;}), bal||{});
+  }
+  google.script.run.withSuccessHandler(function(r){products=(r&&r.success)?(r.data||[]):[];join();}).withFailureHandler(function(){products=null;join();}).getProducts();
+  google.script.run.withSuccessHandler(function(r){bal={};((r&&r.data)||[]).forEach(function(s){bal[s.barcode]=(bal[s.barcode]||0)+(Number(s.qtyBalance)||0);});join();}).withFailureHandler(function(){bal={};join();}).getStockOnHand({});
+};
+
+function _dfBuild(cfg, products, balMap){
+  _dfEnsureExcelJS(function(){
+    try{
+      showLoading('กำลังสร้างไฟล์ Excel...');
+      var FONT='TH Sarabun New', cols=cfg.columns||[], N=cols.length;
+      var wb=new ExcelJS.Workbook();
+      var ws=wb.addWorksheet('ฟอร์ม',{ pageSetup:{paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:true,margins:{left:0.4,right:0.4,top:0.55,bottom:0.5,header:0.2,footer:0.2}}, headerFooter:{oddFooter:'&Cหน้า &P / &N'} });
+      ws.columns=cols.map(function(c){return {width:c.w||12};});
+      function L(n){ var s=''; while(n>0){ var m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
+      var LAST=L(N);
+      var thin={style:'thin',color:{argb:'FF000000'}}, border={top:thin,left:thin,bottom:thin,right:thin};
+      function f(cell,o){o=o||{};cell.font={name:FONT,size:o.size||14,bold:!!o.bold};}
+      function ctr(cell,w){cell.alignment={horizontal:'center',vertical:'middle',wrapText:!!w};}
+      function lft(cell){cell.alignment={horizontal:'left',vertical:'middle',indent:1};}
+
+      ws.mergeCells('A1:'+LAST+'1'); var c=ws.getCell('A1'); c.value=cfg.title||'ฟอร์มเวชภัณฑ์'; f(c,{size:20,bold:true}); ctr(c); ws.getRow(1).height=30;
+      ws.mergeCells('A2:'+LAST+'2'); c=ws.getCell('A2'); c.value='โรงพยาบาลส่งเสริมสุขภาพตำบล ..............................  อำเภอ ......................  จังหวัด ......................'; f(c,{size:15}); ctr(c); ws.getRow(2).height=24;
+      ws.mergeCells('A3:'+LAST+'3'); c=ws.getCell('A3'); c.value='วันที่ ................................................'; f(c,{size:15}); c.alignment={horizontal:'center',vertical:'middle'}; ws.getRow(3).height=24;
+
+      var hr=ws.getRow(5);
+      cols.forEach(function(col,i){ var cell=hr.getCell(i+1); cell.value=col.h; f(cell,{size:13,bold:true}); ctr(cell,true); cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFBDD7EE'}}; cell.border=border; });
+      hr.height=34; var HEADER_ROW=5, r=6;
+
+      var order=[],groups={};
+      products.forEach(function(p){var cat=(p.category||'').trim()||'อื่น ๆ'; if(!groups[cat]){groups[cat]=[];order.push(cat);} groups[cat].push(p);});
+      order.forEach(function(cat){
+        ws.mergeCells('A'+r+':'+LAST+r);
+        var sc=ws.getCell('A'+r); sc.value='หมวด : '+cat; f(sc,{size:14,bold:true}); lft(sc); sc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFDDEBF7'}};
+        for(var ci=1;ci<=N;ci++) ws.getCell(r,ci).border=border;
+        ws.getRow(r).height=22; r++;
+        groups[cat].slice().sort(function(a,b){return String(a.productName).localeCompare(String(b.productName),'th');}).forEach(function(p,idx){
+          var row=ws.getRow(r);
+          cols.forEach(function(col,i){
+            var cell=row.getCell(i+1); cell.border=border; f(cell,{size:14}); var v='';
+            if(col.type==='no') v=idx+1;
+            else if(col.type==='code') v=(p.sku||p.barcode||'');
+            else if(col.type==='name') v=(p.productName||'');
+            else if(col.type==='pack') v=(p.packSize||p.unit||'');
+            else if(col.type==='balance'){ var b=balMap[p.barcode]||0; v=b>0?b:''; }
+            cell.value=v; if(col.type==='name') lft(cell); else ctr(cell);
+          });
+          row.height=20; r++;
+        });
+      });
+
+      r+=2;
+      var a=Math.max(1,Math.ceil(N/3));
+      var sg=[[1,Math.min(a,N)],[Math.min(a+1,N),Math.min(2*a,N)],[Math.min(2*a+1,N),N]];
+      var labels=['ลงชื่อ ...................................... ผู้จัดทำ','ลงชื่อ ...................................... ผู้ตรวจสอบ','ลงชื่อ ...................................... ผู้อนุมัติ'];
+      function sig(text,c1,c2,rr){ if(c1>c2)c2=c1; ws.mergeCells(rr,c1,rr,c2); var cell=ws.getCell(rr,c1); cell.value=text; f(cell,{size:14}); ctr(cell); }
+      sg.forEach(function(g,i){sig(labels[i],g[0],g[1],r);}); r++;
+      sg.forEach(function(g){sig('( ...................................... )',g[0],g[1],r);}); r++;
+      sg.forEach(function(g){sig('ตำแหน่ง ..........................................',g[0],g[1],r);}); r++;
+      sg.forEach(function(g){sig('วันที่ .......... / .......... / ..........',g[0],g[1],r);});
+
+      ws.views=[{state:'frozen',ySplit:HEADER_ROW}];
+      try{ ws.pageSetup.printTitlesRow='1:'+HEADER_ROW; }catch(e){}
+
+      wb.xlsx.writeBuffer().then(function(buf){
+        var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        var el=document.createElement('a'); el.href=URL.createObjectURL(blob);
+        el.download=(cfg.filePrefix||'ฟอร์ม')+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+        document.body.appendChild(el); el.click(); setTimeout(function(){URL.revokeObjectURL(el.href);el.remove();},1500);
+        hideLoading(); showToast('สร้างฟอร์มสำเร็จ ('+products.length+' รายการ)','success');
+      }).catch(function(e){ hideLoading(); showToast('สร้างไฟล์ไม่สำเร็จ: '+e.message,'error'); });
+    }catch(err){ hideLoading(); showToast('เกิดข้อผิดพลาด: '+err.message,'error'); }
+  });
+}
+
+function exportInitForm(){
+  exportDrugForm({ title:'ฟอร์มตั้งค่าสต็อกเริ่มต้น', filePrefix:'ฟอร์มตั้งค่าเริ่มต้น', columns:[
+    {h:'ลำดับ',w:5,type:'no'},{h:'รหัส',w:11,type:'code'},{h:'รายการเวชภัณฑ์ (ชื่อสามัญทางยา)',w:34,type:'name'},{h:'ขนาดบรรจุ\n(PACK)',w:11,type:'pack'},
+    {h:'จำนวนตั้งต้น',w:11,type:'blank'},{h:'LOT',w:12,type:'blank'},{h:'วันหมดอายุ',w:13,type:'blank'},{h:'หมายเหตุ',w:12,type:'blank'} ] });
+}
+function exportStockInForm(){
+  exportDrugForm({ title:'ฟอร์มรับเวชภัณฑ์เข้าคลัง', filePrefix:'ฟอร์มรับเข้า', columns:[
+    {h:'ลำดับ',w:5,type:'no'},{h:'รหัส',w:11,type:'code'},{h:'รายการเวชภัณฑ์ (ชื่อสามัญทางยา)',w:32,type:'name'},{h:'ขนาดบรรจุ\n(PACK)',w:10,type:'pack'},
+    {h:'คงเหลือ',w:9,type:'balance'},{h:'จำนวนรับเข้า',w:11,type:'blank'},{h:'LOT',w:11,type:'blank'},{h:'วันหมดอายุ',w:12,type:'blank'},{h:'หมายเหตุ',w:11,type:'blank'} ] });
+}
+function exportStockOutForm(){
+  exportDrugForm({ title:'ฟอร์มเบิก-จ่ายเวชภัณฑ์', filePrefix:'ฟอร์มเบิกออก', columns:[
+    {h:'ลำดับ',w:5,type:'no'},{h:'รหัส',w:11,type:'code'},{h:'รายการเวชภัณฑ์ (ชื่อสามัญทางยา)',w:34,type:'name'},{h:'ขนาดบรรจุ\n(PACK)',w:11,type:'pack'},
+    {h:'คงเหลือ',w:10,type:'balance'},{h:'จำนวนเบิก',w:9,type:'blank'},{h:'จำนวนจ่าย',w:9,type:'blank'},{h:'หมายเหตุ',w:13,type:'blank'} ] });
+}
 
 window.addEventListener('load', function() {
   if (!document.getElementById('bottomNav')) {
