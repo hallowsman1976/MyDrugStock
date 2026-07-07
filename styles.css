@@ -350,6 +350,25 @@ table.dataTable tbody td{ padding:11px 12px; vertical-align:middle; border-botto
 }
 @keyframes shimmer{ 100%{ transform: translateX(100%); } }
 
+/* ============================================================
+   Pagination bar — ใช้ร่วมกันทุกตาราง/ลิสต์ (10 แถว/หน้า)
+   ============================================================ */
+.pg-bar{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  flex-wrap:wrap; padding:12px 4px; margin-top:4px;
+}
+.pg-info{ font-size:12.5px; color:var(--text-2); }
+.pg-btns{ display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+.pg-btn{
+  min-width:32px; height:32px; padding:0 8px; border-radius:9px;
+  border:1px solid var(--hairline); background:var(--surface);
+  font-family:inherit; font-size:13px; font-weight:600; color:var(--text-2);
+  cursor:pointer; transition:background .15s var(--ease), color .15s var(--ease), border-color .15s var(--ease);
+}
+.pg-btn:hover:not(:disabled){ background:rgba(10,132,255,.08); color:var(--accent); border-color:rgba(10,132,255,.35); }
+.pg-btn.active{ background:var(--grad-blue); color:#fff; border-color:transparent; box-shadow:0 4px 10px rgba(59,130,246,.35); }
+.pg-btn:disabled{ opacity:.4; cursor:not-allowed; }
+
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration:.001ms !important; transition-duration:.001ms !important; }
 }

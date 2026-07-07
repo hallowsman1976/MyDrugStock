@@ -119,6 +119,57 @@ window.formatNumber = function(num) {
   catch(e) { return String(n); }
 };
 
+// ============================================================
+// PAGINATION - ตัวช่วยแบ่งหน้าใช้ร่วมกันทุกตาราง/ลิสต์ (ค่าเริ่มต้น 10 แถว/หน้า)
+// ============================================================
+window.PAGE_SIZE = 10;
+
+// ตัดข้อมูลตามหน้า: คืน { pageData, page, totalPages }
+window.paginateSlice = function(data, page, pageSize) {
+  data = data || [];
+  pageSize = pageSize || window.PAGE_SIZE;
+  var totalPages = Math.max(1, Math.ceil(data.length / pageSize));
+  if (page < 1) page = 1;
+  if (page > totalPages) page = totalPages;
+  var start = (page - 1) * pageSize;
+  return { pageData: data.slice(start, start + pageSize), page: page, totalPages: totalPages, start: start };
+};
+
+// วาดแถบ pagination ลงใน element id ที่ระบุ — gotoFnName คือชื่อฟังก์ชัน global ที่จะเรียกตอนคลิก เช่น 'stGotoPage'
+window.renderPaginationBar = function(containerId, totalItems, currentPage, pageSize, gotoFnName) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  pageSize = pageSize || window.PAGE_SIZE;
+  var totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  if (currentPage < 1) currentPage = 1;
+  if (currentPage > totalPages) currentPage = totalPages;
+
+  if (!totalItems || totalItems <= pageSize) { el.innerHTML = ''; return; }
+
+  var startItem = (currentPage - 1) * pageSize + 1;
+  var endItem   = Math.min(currentPage * pageSize, totalItems);
+
+  var winSize = 5;
+  var startP  = Math.max(1, currentPage - Math.floor(winSize / 2));
+  var endP    = Math.min(totalPages, startP + winSize - 1);
+  startP      = Math.max(1, endP - winSize + 1);
+  var pages   = [];
+  for (var p = startP; p <= endP; p++) pages.push(p);
+
+  var html = '<div class="pg-bar">';
+  html += '<span class="pg-info">' + startItem + '–' + endItem + ' จาก ' + totalItems + ' รายการ</span>';
+  html += '<div class="pg-btns">';
+  html += '<button class="pg-btn" ' + (currentPage <= 1 ? 'disabled' : '') + ' onclick="' + gotoFnName + '(1)" title="หน้าแรก">&laquo;</button>';
+  html += '<button class="pg-btn" ' + (currentPage <= 1 ? 'disabled' : '') + ' onclick="' + gotoFnName + '(' + (currentPage - 1) + ')" title="ก่อนหน้า">&lsaquo;</button>';
+  pages.forEach(function (p) {
+    html += '<button class="pg-btn' + (p === currentPage ? ' active' : '') + '" onclick="' + gotoFnName + '(' + p + ')">' + p + '</button>';
+  });
+  html += '<button class="pg-btn" ' + (currentPage >= totalPages ? 'disabled' : '') + ' onclick="' + gotoFnName + '(' + (currentPage + 1) + ')" title="ถัดไป">&rsaquo;</button>';
+  html += '<button class="pg-btn" ' + (currentPage >= totalPages ? 'disabled' : '') + ' onclick="' + gotoFnName + '(' + totalPages + ')" title="หน้าสุดท้าย">&raquo;</button>';
+  html += '</div></div>';
+  el.innerHTML = html;
+};
+
 
 // ============================================================
 // DATE UTILITIES - ทั้งหมดเป็น window.xxx

@@ -1202,6 +1202,7 @@ function buildMonthlyWorkbook(products, balMap, rateMap, bikMap, nBik){
       </table>
     </div>
     <div id="msEmpty" class="empty-state hidden"><p>ไม่มีข้อมูลในชีต Drug (คอลัมน์ F–H)</p></div>
+    <div id="msPagination"></div>
   </div>
 </div>
 
@@ -1305,7 +1306,18 @@ function loadMedicalSupplies(){
 }
 
 function renderMs(data, headers){
-  headers = headers||[];
+  // ชุดข้อมูลใหม่ (โหลด/ค้นหา) → เก็บไว้แล้วเริ่มที่หน้า 1
+  window.__msFiltered = data||[];
+  window.__msHeadersCache = headers||[];
+  window.__msPage = 1;
+  _msRenderPage();
+}
+
+function msGotoPage(p){ window.__msPage = p; _msRenderPage(); }
+
+function _msRenderPage(){
+  var data = window.__msFiltered||[];
+  var headers = window.__msHeadersCache||[];
   var head=document.getElementById('msHead'), body=document.getElementById('msBody'),
       empty=document.getElementById('msEmpty'), count=document.getElementById('msCount');
   var edit=canEditMs();
@@ -1319,9 +1331,13 @@ function renderMs(data, headers){
     return '<th'+st+'>'+escapeHtml(l)+'</th>';
   }).join('');
   count.textContent = 'รายการ ('+data.length+')';
-  if(!data.length){ body.innerHTML=''; empty.classList.remove('hidden'); return; }
+  if(!data.length){ body.innerHTML=''; empty.classList.remove('hidden'); document.getElementById('msPagination').innerHTML=''; return; }
   empty.classList.add('hidden');
-  body.innerHTML = data.map(function(r,i){
+
+  var pg = paginateSlice(data, window.__msPage, PAGE_SIZE);
+  window.__msPage = pg.page;
+
+  body.innerHTML = pg.pageData.map(function(r,i){
     var bal=Number(r.balance)||0;
     var balCell='<td style="text-align:center"><span class="chip '+(bal>0?'chip-green':'chip-gray')+'">'+bal+'</span></td>';
     var actions='';
@@ -1332,12 +1348,14 @@ function renderMs(data, headers){
         + '<button class="ms-act del" title="ลบ" onclick="deleteMs('+r.row+')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>'
         + '</td>';
     }
-    return '<tr><td style="text-align:center;color:var(--text-3)">'+(i+1)+'</td>'
+    return '<tr><td style="text-align:center;color:var(--text-3)">'+(pg.start+i+1)+'</td>'
       + '<td style="font-weight:600">'+escapeHtml(r.col1)+'</td>'
       + '<td>'+escapeHtml(r.col2)+'</td>'
       + '<td>'+escapeHtml(r.col3)+'</td>'
       + balCell + actions + '</tr>';
   }).join('');
+
+  renderPaginationBar('msPagination', data.length, window.__msPage, PAGE_SIZE, 'msGotoPage');
 }
 
 function filterMs(){
@@ -4202,7 +4220,8 @@ function submitStockOut() {
 }
 </script>
 </template>
-  <template id="tpl-stock-table">   <div class="pb-4">
+  <template id="tpl-stock-table">
+<div class="pb-4">
   <div class="page-header">
     <div class="flex items-center justify-between">
       <div>
@@ -4330,6 +4349,8 @@ function submitStockOut() {
       <p class="text-sm text-gray-400 mt-1">ลองเปลี่ยน filter หรือคำค้นหา</p>
     </div>
   </div>
+
+  <div id="stPagination" class="px-4"></div>
 </div>
 
 <script>
@@ -4421,22 +4442,35 @@ function filterStockTable() {
 // renderStockTable
 // ============================================================
 function renderStockTable(data) {
+  // ชุดข้อมูลใหม่ (โหลด/filter) → เก็บไว้แล้วเริ่มที่หน้า 1
+  updateStSummary(data);
+  window.__stFiltered = data || [];
+  window.__stPage = 1;
+  _stRenderPage();
+}
+
+function stGotoPage(p) { window.__stPage = p; _stRenderPage(); }
+
+function _stRenderPage() {
+  var data       = window.__stFiltered || [];
   var emptyState = document.getElementById('stEmptyState');
   var cardList   = document.getElementById('stCardList');
   var tableBody  = document.getElementById('stTableBody');
-
-  updateStSummary(data);
 
   if (!data || data.length === 0) {
     emptyState.classList.remove('hidden');
     cardList.innerHTML  = '';
     tableBody.innerHTML = '<tr><td colspan="7" class="py-4"></td></tr>';
+    document.getElementById('stPagination').innerHTML = '';
     return;
   }
 
   emptyState.classList.add('hidden');
-  renderStockCards(data, cardList);
-  renderStockTableRows(data, tableBody);
+  var pg = paginateSlice(data, window.__stPage, PAGE_SIZE);
+  window.__stPage = pg.page;
+  renderStockCards(pg.pageData, cardList, pg.start);
+  renderStockTableRows(pg.pageData, tableBody, pg.start);
+  renderPaginationBar('stPagination', data.length, window.__stPage, PAGE_SIZE, 'stGotoPage');
 }
 
 // ============================================================
@@ -4524,7 +4558,8 @@ function renderStockCards(data, container) {
 // ============================================================
 // renderStockTableRows - desktop table layout
 // ============================================================
-function renderStockTableRows(data, tbody) {
+function renderStockTableRows(data, tbody, offset) {
+  offset = offset || 0;
   tbody.innerHTML = data.map(function(item, idx) {
 
     var balanceColor = item.qtyBalance <= 0
@@ -4552,7 +4587,7 @@ function renderStockTableRows(data, tbody) {
       '<tr class="border-b border-gray-100 hover:bg-blue-50 transition-colors ' + rowBg + '">' +
 
         // #
-        '<td class="px-4 py-3 text-xs text-gray-400">' + (idx + 1) + '</td>' +
+        '<td class="px-4 py-3 text-xs text-gray-400">' + (offset + idx + 1) + '</td>' +
 
         // สินค้า
         '<td class="px-4 py-3">' +
@@ -4636,8 +4671,10 @@ function updateStSummary(data) {
 
   document.getElementById('stSummaryChips').innerHTML = chips;
 }
-</script></template>
-  <template id="tpl-history">       <div class="pb-4">
+</script>
+</template>
+  <template id="tpl-history">
+<div class="pb-4">
   <div class="page-header">
     <div class="flex items-center justify-between">
       <div>
@@ -4782,6 +4819,8 @@ function updateStSummary(data) {
       </p>
     </div>
   </div>
+
+  <div id="histPagination" class="px-4"></div>
 </div>
 
 <script>
@@ -4879,6 +4918,18 @@ var showLoading  = window.showLoading  || function() {};
 var hideLoading  = window.hideLoading  || function() {};
 var showToast    = window.showToast    || function(m) { console.log(m); };
 
+var PAGE_SIZE = window.PAGE_SIZE || 10;
+var paginateSlice = (typeof window.paginateSlice === 'function')
+  ? window.paginateSlice
+  : function(data, page, pageSize) {
+      data = data || []; pageSize = pageSize || 10;
+      var totalPages = Math.max(1, Math.ceil(data.length / pageSize));
+      if (page < 1) page = 1; if (page > totalPages) page = totalPages;
+      var start = (page - 1) * pageSize;
+      return { pageData: data.slice(start, start + pageSize), page: page, totalPages: totalPages, start: start };
+    };
+var renderPaginationBar = window.renderPaginationBar || function() {};
+
 // ============================================================
 // State
 // ============================================================
@@ -4973,22 +5024,35 @@ window.filterHistory = function() {
 // _renderHistory
 // ============================================================
 function _renderHistory(data) {
+  // ชุดข้อมูลใหม่ (โหลด/filter) → เก็บไว้แล้วเริ่มที่หน้า 1
+  _updateHistSummary(data);
+  window.__histFiltered = data || [];
+  window.__histPage = 1;
+  _histRenderPage();
+}
+
+window.histGotoPage = function(p) { window.__histPage = p; _histRenderPage(); };
+
+function _histRenderPage() {
+  var data       = window.__histFiltered || [];
   var emptyState = document.getElementById('histEmptyState');
   var cardList   = document.getElementById('histCardList');
   var tableBody  = document.getElementById('histTableBody');
-
-  _updateHistSummary(data);
 
   if (!data || data.length === 0) {
     if (emptyState) emptyState.classList.remove('hidden');
     if (cardList)   cardList.innerHTML = '';
     if (tableBody)  tableBody.innerHTML = '<tr><td colspan="8" class="py-4"></td></tr>';
+    var pgEl = document.getElementById('histPagination'); if (pgEl) pgEl.innerHTML = '';
     return;
   }
 
   if (emptyState) emptyState.classList.add('hidden');
-  if (cardList)   _renderHistoryCards(data, cardList);
-  if (tableBody)  _renderHistoryTableRows(data, tableBody);
+  var pg = paginateSlice(data, window.__histPage, PAGE_SIZE);
+  window.__histPage = pg.page;
+  if (cardList)  _renderHistoryCards(pg.pageData, cardList);
+  if (tableBody) _renderHistoryTableRows(pg.pageData, tableBody);
+  renderPaginationBar('histPagination', data.length, window.__histPage, PAGE_SIZE, 'histGotoPage');
 }
 
 // ============================================================
@@ -5201,8 +5265,10 @@ function _updateHistSummary(data) {
 
   if (chipsEl) chipsEl.innerHTML = chips;
 }
-</script></template>
-  <template id="tpl-admin-products"><div class="pb-4">
+</script>
+</template>
+  <template id="tpl-admin-products">
+<div class="pb-4">
   <div class="page-header">
     <div class="flex items-center justify-between">
       <div>
@@ -5228,6 +5294,7 @@ function _updateHistSummary(data) {
       <div class="w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
     </div>
   </div>
+  <div id="apPagination" class="px-4"></div>
 </div>
 
 <!-- Edit Product Modal -->
@@ -5329,12 +5396,25 @@ function filterAdminProducts() {
 }
 
 function renderAdminProducts(products) {
+  // ชุดข้อมูลใหม่ (โหลด/ค้นหา) → เก็บไว้แล้วเริ่มที่หน้า 1
+  window.__apFiltered = products || [];
+  window.__apPage = 1;
+  _apRenderPage();
+}
+
+function apGotoPage(p) { window.__apPage = p; _apRenderPage(); }
+
+function _apRenderPage() {
+  const products  = window.__apFiltered || [];
   const container = document.getElementById('adminProductList');
   if (!products || products.length === 0) {
     container.innerHTML = '<div class="empty-state"><p>ไม่พบสินค้า</p></div>';
+    document.getElementById('apPagination').innerHTML = '';
     return;
   }
-  container.innerHTML = products.map(function(p) {
+  const pg = paginateSlice(products, window.__apPage, PAGE_SIZE);
+  window.__apPage = pg.page;
+  container.innerHTML = pg.pageData.map(function(p) {
     return `
       <div class="bg-white rounded-xl p-4 shadow-sm">
         <div class="flex items-start justify-between gap-3">
@@ -5364,6 +5444,7 @@ function renderAdminProducts(products) {
       </div>
     `;
   }).join('');
+  renderPaginationBar('apPagination', products.length, window.__apPage, PAGE_SIZE, 'apGotoPage');
 }
 
 function openEditProduct(productId) {
@@ -5443,7 +5524,8 @@ function confirmDeleteProduct(productId, productName) {
       .deleteProduct(productId);
   });
 }
-</script></template>
+</script>
+</template>
   <template id="tpl-admin-users">   <div class="pb-4">
   <div class="page-header">
     <div class="flex items-center justify-between">
