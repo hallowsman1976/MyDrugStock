@@ -727,6 +727,7 @@ function showForgotPassword() {
 
   <!-- List -->
   <div id="isList"></div>
+  <div id="isPagination" class="px-4"></div>
   <div id="isEmpty" class="empty-state hidden">
     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
@@ -772,18 +773,18 @@ function loadInitialStock() {
 function renderInitialStock(products) {
   var list  = document.getElementById('isList');
   var empty = document.getElementById('isEmpty');
-  var count = document.getElementById('isCount');
   var bal   = window.__isBal || {};
-
-  if (count) count.textContent = 'รายการยา (' + products.length + ')';
 
   if (!products.length) {
     list.innerHTML = '';
     empty.classList.remove('hidden');
+    document.getElementById('isPagination').innerHTML = '';
     return;
   }
   empty.classList.add('hidden');
 
+  // render การ์ดทั้งหมดครั้งเดียว (ทุกครั้งที่โหลดใหม่) แล้วใช้ show/hide จัดหน้า+ค้นหา
+  // เพื่อไม่ให้ค่าที่กรอกไว้ในการ์ดหน้าอื่นหายไปตอนเปลี่ยนหน้า
   list.innerHTML = products.map(function(p){
     var b   = bal[p.barcode] || 0;
     var key = (p.productName + ' ' + p.barcode + ' ' + (p.sku||'')).toLowerCase();
@@ -806,6 +807,10 @@ function renderInitialStock(products) {
       +   '</div>'
       + '</div>';
   }).join('');
+
+  window.__isAllCards = Array.prototype.slice.call(list.querySelectorAll('[data-init-row]'));
+  window.__isPage = 1;
+  isApplyFilterAndPage();
 }
 
 // ไฮไลต์การ์ดที่กรอกจำนวนแล้ว
@@ -816,12 +821,30 @@ function isTouch(inp){
   else card.classList.remove('is-hasqty');
 }
 
-// กรองด้วยการซ่อน/แสดง (ไม่ re-render เพื่อไม่ให้ค่าที่กรอกหาย)
+function isGotoPage(p){ window.__isPage = p; isApplyFilterAndPage(); }
+
+// กรอง+แบ่งหน้าด้วยการซ่อน/แสดง (ไม่ re-render เพื่อไม่ให้ค่าที่กรอกหาย)
 function filterInitialStock(){
+  window.__isPage = 1; // ค้นหาใหม่ → กลับไปหน้า 1
+  isApplyFilterAndPage();
+}
+
+function isApplyFilterAndPage(){
   var q = (document.getElementById('isSearch').value || '').toLowerCase().trim();
-  document.querySelectorAll('#isList [data-init-row]').forEach(function(card){
-    card.style.display = (!q || (card.dataset.key||'').indexOf(q) !== -1) ? '' : 'none';
-  });
+  var cards = window.__isAllCards || [];
+  var matching = cards.filter(function(card){ return !q || (card.dataset.key||'').indexOf(q) !== -1; });
+
+  var pg = paginateSlice(matching, window.__isPage, PAGE_SIZE);
+  window.__isPage = pg.page;
+  var visible = pg.pageData;
+
+  cards.forEach(function(card){ card.style.display = 'none'; });
+  visible.forEach(function(card){ card.style.display = ''; });
+
+  var count = document.getElementById('isCount');
+  if (count) count.textContent = 'รายการยา (' + matching.length + ')';
+
+  renderPaginationBar('isPagination', matching.length, window.__isPage, PAGE_SIZE, 'isGotoPage');
 }
 
 function submitInitialStock(){
@@ -1471,6 +1494,7 @@ function saveSupplyStock(){
   <div class="section-title"><span id="siCount">รายการ</span></div>
 
   <div id="siList"></div>
+  <div id="siPagination" class="px-4"></div>
   <div id="siEmpty" class="empty-state hidden"><p>ไม่มีรายการเวชภัณฑ์ที่มิใช่ยา (เพิ่มได้ที่เมนู “เวชภัณฑ์ที่มิใช่ยา”)</p></div>
 </div>
 
@@ -1497,10 +1521,11 @@ function loadSupplyInit(){
 }
 
 function renderSiList(list){
-  var box=document.getElementById('siList'), empty=document.getElementById('siEmpty'), count=document.getElementById('siCount');
-  if(count) count.textContent='รายการ ('+list.length+')';
-  if(!list.length){ box.innerHTML=''; empty.classList.remove('hidden'); return; }
+  var box=document.getElementById('siList'), empty=document.getElementById('siEmpty');
+  if(!list.length){ box.innerHTML=''; empty.classList.remove('hidden'); document.getElementById('siPagination').innerHTML=''; return; }
   empty.classList.add('hidden');
+
+  // render การ์ดทั้งหมดครั้งเดียว แล้วใช้ show/hide จัดหน้า+ค้นหา กันค่าที่กรอกหายตอนเปลี่ยนหน้า
   box.innerHTML = list.map(function(p){
     var b=Number(p.balance)||0, key=(p.col1+' '+(p.col2||'')+' '+(p.col3||'')).toLowerCase();
     return ''
@@ -1517,13 +1542,37 @@ function renderSiList(list){
       +  '</div>'
       +'</div>';
   }).join('');
+
+  window.__siAllCards = Array.prototype.slice.call(box.querySelectorAll('[data-si-row]'));
+  window.__siPage = 1;
+  siApplyFilterAndPage();
 }
 
 function siTouch(inp){ var c=inp.closest('[data-si-row]'); if(!c) return; if((Number(inp.value)||0)>0) c.classList.add('si-has'); else c.classList.remove('si-has'); }
 
+function siGotoPage(p){ window.__siPage = p; siApplyFilterAndPage(); }
+
 function filterSiList(){
+  window.__siPage = 1; // ค้นหาใหม่ → กลับไปหน้า 1
+  siApplyFilterAndPage();
+}
+
+function siApplyFilterAndPage(){
   var q=(document.getElementById('siSearch').value||'').toLowerCase().trim();
-  document.querySelectorAll('#siList [data-si-row]').forEach(function(c){ c.style.display=(!q||(c.dataset.key||'').indexOf(q)!==-1)?'':'none'; });
+  var cards = window.__siAllCards || [];
+  var matching = cards.filter(function(c){ return !q || (c.dataset.key||'').indexOf(q)!==-1; });
+
+  var pg = paginateSlice(matching, window.__siPage, PAGE_SIZE);
+  window.__siPage = pg.page;
+  var visible = pg.pageData;
+
+  cards.forEach(function(c){ c.style.display='none'; });
+  visible.forEach(function(c){ c.style.display=''; });
+
+  var count=document.getElementById('siCount');
+  if(count) count.textContent='รายการ ('+matching.length+')';
+
+  renderPaginationBar('siPagination', matching.length, window.__siPage, PAGE_SIZE, 'siGotoPage');
 }
 
 function submitSupplyInit(){
