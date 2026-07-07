@@ -259,6 +259,18 @@
           <span class="text-sm font-medium">เวชภัณฑ์ที่มิใช่ยา</span>
         </button>
 
+        <button onclick="switchPage('supply-init')" data-page="supply-init"
+                data-roles="Admin,Staff"
+                class="sidebar-menu-item w-full flex items-center gap-3 px-3 py-3
+                       rounded-xl text-left text-gray-700 hover:bg-blue-50
+                       hover:text-blue-700 transition-all mb-1">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 7v10a2 2 0 002 2h12a2 2 0 002-2V7M4 7l8-4 8 4M4 7l8 4 8-4M12 11v8"/>
+          </svg>
+          <span class="text-sm font-medium">ตั้งต้น (เวชภัณฑ์มิใช่ยา)</span>
+        </button>
+
         <button onclick="switchPage('history')" data-page="history"
                 class="sidebar-menu-item w-full flex items-center gap-3 px-3 py-3
                        rounded-xl text-left text-gray-700 hover:bg-blue-50
@@ -1410,6 +1422,109 @@ function saveSupplyStock(){
     .withSuccessHandler(function(res){ hideLoading(); if(res&&res.success){ closeStockModal(); showToast(res.message,'success'); loadMedicalSupplies(); } else showToast((res&&res.message)||'บันทึกไม่สำเร็จ','error'); })
     .withFailureHandler(function(err){ hideLoading(); showToast('บันทึกไม่สำเร็จ: '+(err&&err.message||''),'error'); })
     .saveSupplyTxn({ supplyKey:item.col1, name:item.col1, unit:item.col2, txnType:window.__ssType, qty:qty, remark:document.getElementById('ssRemark').value.trim() });
+}
+</script>
+</template>
+  <template id="tpl-supply-init">
+<div class="pb-4">
+  <div class="page-header">
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div>
+        <h1>ตั้งค่าสต็อกเริ่มต้น (เวชภัณฑ์มิใช่ยา)</h1>
+        <p>กำหนดจำนวนคงคลังตั้งต้นของเวชภัณฑ์ที่มิใช่ยาแต่ละรายการ</p>
+      </div>
+      <button class="btn btn-primary" onclick="submitSupplyInit()">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        บันทึกสต็อกเริ่มต้น
+      </button>
+    </div>
+  </div>
+
+  <div style="margin:14px 16px 0;">
+    <div class="toast toast-info" style="animation:none;">
+      <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <div style="font-size:13px;line-height:1.5;">กรอกจำนวนตั้งต้นเฉพาะรายการที่ต้องการ แล้วกด “บันทึกสต็อกเริ่มต้น” · แถวที่เว้นว่างจะถูกข้าม · ระบบบันทึกเป็นการรับเข้า (ยอดยกมา)</div>
+    </div>
+  </div>
+
+  <div style="margin:14px 16px 6px;">
+    <input id="siSearch" class="form-input" placeholder="ค้นหา..." oninput="filterSiList()">
+  </div>
+  <div class="section-title"><span id="siCount">รายการ</span></div>
+
+  <div id="siList"></div>
+  <div id="siEmpty" class="empty-state hidden"><p>ไม่มีรายการเวชภัณฑ์ที่มิใช่ยา (เพิ่มได้ที่เมนู “เวชภัณฑ์ที่มิใช่ยา”)</p></div>
+</div>
+
+<style>
+  #siList .card{ padding:12px 14px; margin:0 16px 8px; }
+  .si-qty{ text-align:center; }
+  .si-has{ box-shadow:0 0 0 2px rgba(10,132,255,.35), var(--shadow-sm) !important; }
+</style>
+
+<script>
+function loadSupplyInit(){
+  window.__siReady=false;
+  showLoading('กำลังโหลดรายการเวชภัณฑ์...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      hideLoading();
+      if(!res || !res.success){ showToast((res&&res.message)||'โหลดข้อมูลไม่สำเร็จ (อาจต้อง deploy GAS)','error'); renderSiList([]); return; }
+      window.__siData = (res.data||[]).filter(function(x){ return x.col1; }); // ต้องมีคีย์ (คอลัมน์ F)
+      window.__siReady=true;
+      renderSiList(window.__siData);
+    })
+    .withFailureHandler(function(err){ hideLoading(); showToast('โหลดข้อมูลไม่สำเร็จ: '+(err&&err.message||''),'error'); renderSiList([]); })
+    .getMedicalSupplies();
+}
+
+function renderSiList(list){
+  var box=document.getElementById('siList'), empty=document.getElementById('siEmpty'), count=document.getElementById('siCount');
+  if(count) count.textContent='รายการ ('+list.length+')';
+  if(!list.length){ box.innerHTML=''; empty.classList.remove('hidden'); return; }
+  empty.classList.add('hidden');
+  box.innerHTML = list.map(function(p){
+    var b=Number(p.balance)||0, key=(p.col1+' '+(p.col2||'')+' '+(p.col3||'')).toLowerCase();
+    return ''
+      +'<div class="card" data-si-row data-key="'+escapeHtml(key)+'">'
+      +  '<div class="flex items-center justify-between gap-3">'
+      +    '<div style="min-width:0">'
+      +      '<div style="font-weight:600;color:var(--text)">'+escapeHtml(p.col1)+'</div>'
+      +      '<div style="font-size:12px;color:var(--text-2);margin-top:2px">'+escapeHtml(p.col2||'')
+      +        ' <span class="chip '+(b>0?'chip-green':'chip-gray')+'">คงเหลือ '+b+'</span></div>'
+      +    '</div>'
+      +    '<div style="width:110px;flex:none">'
+      +      '<input type="number" min="0" step="1" class="form-input si-qty" placeholder="ตั้งต้น" data-key="'+escapeHtml(p.col1)+'" data-unit="'+escapeHtml(p.col2||'')+'" oninput="siTouch(this)">'
+      +    '</div>'
+      +  '</div>'
+      +'</div>';
+  }).join('');
+}
+
+function siTouch(inp){ var c=inp.closest('[data-si-row]'); if(!c) return; if((Number(inp.value)||0)>0) c.classList.add('si-has'); else c.classList.remove('si-has'); }
+
+function filterSiList(){
+  var q=(document.getElementById('siSearch').value||'').toLowerCase().trim();
+  document.querySelectorAll('#siList [data-si-row]').forEach(function(c){ c.style.display=(!q||(c.dataset.key||'').indexOf(q)!==-1)?'':'none'; });
+}
+
+function submitSupplyInit(){
+  if(!window.__siReady){ showToast('กำลังโหลดข้อมูล กรุณารอสักครู่','warning'); return; }
+  var items=[];
+  document.querySelectorAll('#siList .si-qty').forEach(function(inp){
+    var q=Number(inp.value)||0; if(q>0) items.push({ supplyKey:inp.dataset.key, name:inp.dataset.key, unit:inp.dataset.unit||'', qty:q });
+  });
+  if(!items.length){ showToast('กรุณากรอกจำนวนตั้งต้นอย่างน้อย 1 รายการ','warning'); return; }
+  Swal.fire({ icon:'question', title:'ยืนยันตั้งค่าสต็อกเริ่มต้น?', html:'จะบันทึกยอดยกมา <b>'+items.length+'</b> รายการ',
+    showCancelButton:true, confirmButtonText:'บันทึก', cancelButtonText:'ยกเลิก', confirmButtonColor:'#4f46e5', cancelButtonColor:'#6b7280'
+  }).then(function(r){
+    if(!r.isConfirmed) return;
+    showLoading('กำลังบันทึกสต็อกเริ่มต้น...');
+    google.script.run
+      .withSuccessHandler(function(res){ hideLoading(); if(res&&res.success){ Swal.fire({icon:'success',title:'สำเร็จ',text:res.message,timer:1800,showConfirmButton:false}); loadSupplyInit(); } else showToast((res&&res.message)||'บันทึกไม่สำเร็จ','error'); })
+      .withFailureHandler(function(err){ hideLoading(); showToast('บันทึกไม่สำเร็จ: '+(err&&err.message||''),'error'); })
+      .saveSupplyInitial(items);
+  });
 }
 </script>
 </template>
