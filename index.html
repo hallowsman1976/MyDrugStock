@@ -1217,6 +1217,36 @@ function buildMonthlyWorkbook(products, balMap, rateMap, bikMap, nBik){
   </div>
 </div>
 
+<!-- Stock (รับ/จ่าย) Modal -->
+<div id="msStockModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center justify-center p-4">
+  <div class="bg-white rounded-2xl w-full max-w-md max-h-screen overflow-y-auto">
+    <div class="p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-bold text-gray-900">รับ / จ่าย เวชภัณฑ์</h3>
+        <button onclick="closeStockModal()" class="p-1 rounded-lg hover:bg-gray-100">
+          <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="mb-3">
+        <div id="ssName" style="font-weight:700;color:var(--text)"></div>
+        <div style="font-size:13px;color:var(--text-2);margin-top:2px">คงเหลือปัจจุบัน: <b id="ssBal" style="color:var(--text)"></b> <span id="ssUnit"></span></div>
+      </div>
+      <div class="ss-seg" style="margin-bottom:12px">
+        <button id="ssTabIn" class="active in" onclick="ssSetType('IN')">รับเข้า</button>
+        <button id="ssTabOut" class="out" onclick="ssSetType('OUT')">จ่ายออก</button>
+      </div>
+      <div class="space-y-3">
+        <div><label class="form-label">จำนวน <span class="required">*</span></label><input id="ssQty" type="number" min="1" class="form-input" value="1"></div>
+        <div><label class="form-label">หมายเหตุ</label><input id="ssRemark" class="form-input" placeholder="หมายเหตุ (ถ้ามี)"></div>
+      </div>
+      <div class="flex gap-3 mt-4">
+        <button onclick="closeStockModal()" class="btn btn-secondary flex-1">ยกเลิก</button>
+        <button id="ssSaveBtn" onclick="saveSupplyStock()" class="btn btn-success flex-1">บันทึก</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <style>
   #msTable{ width:100%; border-collapse:collapse; font-size:14px; }
   #msTable th{ background:var(--surface-2); color:var(--text-2); font-weight:600; font-size:12px;
@@ -1228,6 +1258,13 @@ function buildMonthlyWorkbook(products, balMap, rateMap, bikMap, nBik){
   .ms-act svg{ width:16px; height:16px; }
   .ms-act.edit:hover{ background:#eaf3ff; color:var(--accent); border-color:rgba(10,132,255,.4); }
   .ms-act.del:hover{ background:#ffe9e8; color:#d70015; border-color:#fca5a5; }
+  .ms-act.stock:hover{ background:#e7f8ee; color:#137a43; border-color:#9ae6b4; }
+  .ss-seg{ display:flex; gap:6px; background:rgba(120,120,128,.12); padding:4px; border-radius:12px; }
+  .ss-seg button{ flex:1; padding:10px; border:0; background:transparent; border-radius:9px; font-family:inherit;
+    font-weight:600; font-size:14px; color:var(--text-2); cursor:pointer; transition:.2s; }
+  .ss-seg button.active{ background:#fff; box-shadow:var(--shadow-sm); }
+  .ss-seg button.active.in{ color:#137a43; }
+  .ss-seg button.active.out{ color:#d70015; }
 </style>
 
 <script>
@@ -1260,21 +1297,34 @@ function renderMs(data, headers){
   var head=document.getElementById('msHead'), body=document.getElementById('msBody'),
       empty=document.getElementById('msEmpty'), count=document.getElementById('msCount');
   var edit=canEditMs();
-  var labels=['ลำดับ', headers[0]||'คอลัมน์ F', headers[1]||'คอลัมน์ G', headers[2]||'คอลัมน์ H'];
+  var labels=['ลำดับ', headers[0]||'คอลัมน์ F', headers[1]||'คอลัมน์ G', headers[2]||'คอลัมน์ H', 'คงเหลือ'];
   if(edit) labels.push('จัดการ');
-  head.innerHTML = labels.map(function(l,i){ return '<th'+(i===0?' style="width:56px;text-align:center"':'')+(edit&&i===labels.length-1?' style="width:96px;text-align:center"':'')+'>'+escapeHtml(l)+'</th>'; }).join('');
+  head.innerHTML = labels.map(function(l,i){
+    var st='';
+    if(i===0) st=' style="width:52px;text-align:center"';
+    else if(l==='คงเหลือ') st=' style="width:80px;text-align:center"';
+    else if(edit && i===labels.length-1) st=' style="width:130px;text-align:center"';
+    return '<th'+st+'>'+escapeHtml(l)+'</th>';
+  }).join('');
   count.textContent = 'รายการ ('+data.length+')';
   if(!data.length){ body.innerHTML=''; empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
   body.innerHTML = data.map(function(r,i){
-    var actions = edit ? ('<td style="text-align:center;white-space:nowrap">'
-      + '<button class="ms-act edit" title="แก้ไข" onclick="openMsModal('+r.row+')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button> '
-      + '<button class="ms-act del" title="ลบ" onclick="deleteMs('+r.row+')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>'
-      + '</td>') : '';
+    var bal=Number(r.balance)||0;
+    var balCell='<td style="text-align:center"><span class="chip '+(bal>0?'chip-green':'chip-gray')+'">'+bal+'</span></td>';
+    var actions='';
+    if(edit){
+      var stockBtn = r.col1 ? ('<button class="ms-act stock" title="รับ/จ่าย" onclick="openStockModal('+r.row+')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg></button> ') : '';
+      actions='<td style="text-align:center;white-space:nowrap">'+stockBtn
+        + '<button class="ms-act edit" title="แก้ไข" onclick="openMsModal('+r.row+')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button> '
+        + '<button class="ms-act del" title="ลบ" onclick="deleteMs('+r.row+')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>'
+        + '</td>';
+    }
     return '<tr><td style="text-align:center;color:var(--text-3)">'+(i+1)+'</td>'
       + '<td style="font-weight:600">'+escapeHtml(r.col1)+'</td>'
       + '<td>'+escapeHtml(r.col2)+'</td>'
-      + '<td>'+escapeHtml(r.col3)+'</td>'+actions+'</tr>';
+      + '<td>'+escapeHtml(r.col3)+'</td>'
+      + balCell + actions + '</tr>';
   }).join('');
 }
 
@@ -1328,6 +1378,38 @@ function deleteMs(row){
       .withFailureHandler(function(err){ hideLoading(); showToast('ลบไม่สำเร็จ: '+(err&&err.message||''),'error'); })
       .deleteMedicalSupply(row);
   });
+}
+
+// ---- Stock (รับ/จ่าย) ----
+function openStockModal(row){
+  var item=(window.__msData||[]).filter(function(x){return x.row===row;})[0];
+  if(!item) return;
+  window.__ssItem=item; window.__ssType='IN';
+  document.getElementById('ssName').textContent = item.col1;
+  document.getElementById('ssBal').textContent  = Number(item.balance)||0;
+  document.getElementById('ssUnit').textContent = item.col2||'';
+  document.getElementById('ssQty').value='1';
+  document.getElementById('ssRemark').value='';
+  ssSetType('IN');
+  document.getElementById('msStockModal').classList.remove('hidden');
+  setTimeout(function(){ document.getElementById('ssQty').focus(); document.getElementById('ssQty').select(); }, 50);
+}
+function closeStockModal(){ document.getElementById('msStockModal').classList.add('hidden'); }
+function ssSetType(t){
+  window.__ssType = (t==='OUT') ? 'OUT' : 'IN';
+  document.getElementById('ssTabIn').classList.toggle('active', window.__ssType==='IN');
+  document.getElementById('ssTabOut').classList.toggle('active', window.__ssType==='OUT');
+  document.getElementById('ssSaveBtn').className = 'btn ' + (window.__ssType==='IN'?'btn-success':'btn-danger') + ' flex-1';
+}
+function saveSupplyStock(){
+  var item=window.__ssItem; if(!item){ closeStockModal(); return; }
+  var qty=Number(document.getElementById('ssQty').value)||0;
+  if(qty<=0){ showToast('จำนวนต้องมากกว่า 0','warning'); return; }
+  showLoading('กำลังบันทึก...');
+  google.script.run
+    .withSuccessHandler(function(res){ hideLoading(); if(res&&res.success){ closeStockModal(); showToast(res.message,'success'); loadMedicalSupplies(); } else showToast((res&&res.message)||'บันทึกไม่สำเร็จ','error'); })
+    .withFailureHandler(function(err){ hideLoading(); showToast('บันทึกไม่สำเร็จ: '+(err&&err.message||''),'error'); })
+    .saveSupplyTxn({ supplyKey:item.col1, name:item.col1, unit:item.col2, txnType:window.__ssType, qty:qty, remark:document.getElementById('ssRemark').value.trim() });
 }
 </script>
 </template>
