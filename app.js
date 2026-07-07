@@ -1563,6 +1563,98 @@ function exportStockOutForm(){
     {h:'คงเหลือ',w:10,type:'balance'},{h:'จำนวนเบิก',w:9,type:'blank'},{h:'จำนวนจ่าย',w:9,type:'blank'},{h:'หมายเหตุ',w:13,type:'blank'} ] });
 }
 
+// ============================================================
+// EXPORT ฟอร์ม Excel — เวชภัณฑ์ที่มิใช่ยา (จาก getMedicalSupplies F/G/H)
+// รายการแบบ flat ไม่จัดกลุ่มหมวด · 4 คอลัมน์แรก = ลำดับ + F/G/H
+// ============================================================
+window.exportSupplyForm = function(cfg){
+  cfg = cfg || {};
+  showLoading('กำลังดึงข้อมูลเวชภัณฑ์...');
+  google.script.run
+    .withSuccessHandler(function(res){
+      hideLoading();
+      if(!res || !res.success){ showToast((res&&res.message)||'ดึงข้อมูลไม่สำเร็จ (อาจต้อง deploy GAS เวอร์ชันใหม่)','error'); return; }
+      _sfBuild(cfg, res.data||[], res.headers||[]);
+    })
+    .withFailureHandler(function(err){ hideLoading(); showToast('ดึงข้อมูลไม่สำเร็จ: '+(err&&err.message||''),'error'); })
+    .getMedicalSupplies();
+};
+
+function _sfBuild(cfg, supplies, headers){
+  _dfEnsureExcelJS(function(){
+    try{
+      showLoading('กำลังสร้างไฟล์ Excel...');
+      var FONT='TH Sarabun New';
+      var cols=[ {h:'ลำดับ',w:5}, {h:headers[0]||'คอลัมน์ F',w:30}, {h:headers[1]||'คอลัมน์ G',w:14}, {h:headers[2]||'คอลัมน์ H',w:16} ].concat(cfg.extraCols||[]);
+      var N=cols.length;
+      var wb=new ExcelJS.Workbook();
+      var ws=wb.addWorksheet('ฟอร์ม',{ pageSetup:{paperSize:9,orientation:'portrait',fitToPage:true,fitToWidth:1,fitToHeight:0,horizontalCentered:true,margins:{left:0.4,right:0.4,top:0.55,bottom:0.5,header:0.2,footer:0.2}}, headerFooter:{oddFooter:'&Cหน้า &P / &N'} });
+      ws.columns=cols.map(function(c){return {width:c.w||12};});
+      function L(n){ var s=''; while(n>0){ var m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=(n-m-1)/26; } return s; }
+      var LAST=L(N);
+      var thin={style:'thin',color:{argb:'FF000000'}}, border={top:thin,left:thin,bottom:thin,right:thin};
+      function f(cell,o){o=o||{};cell.font={name:FONT,size:o.size||14,bold:!!o.bold};}
+      function ctr(cell,w){cell.alignment={horizontal:'center',vertical:'middle',wrapText:!!w};}
+      function lft(cell){cell.alignment={horizontal:'left',vertical:'middle',indent:1};}
+
+      ws.mergeCells('A1:'+LAST+'1'); var c=ws.getCell('A1'); c.value=cfg.title||'ฟอร์มเวชภัณฑ์ที่มิใช่ยา'; f(c,{size:20,bold:true}); ctr(c); ws.getRow(1).height=30;
+      ws.mergeCells('A2:'+LAST+'2'); c=ws.getCell('A2'); c.value='โรงพยาบาลส่งเสริมสุขภาพตำบล ..............................  อำเภอ ......................  จังหวัด ......................'; f(c,{size:15}); ctr(c); ws.getRow(2).height=24;
+      ws.mergeCells('A3:'+LAST+'3'); c=ws.getCell('A3'); c.value='วันที่ ................................................'; f(c,{size:15}); c.alignment={horizontal:'center',vertical:'middle'}; ws.getRow(3).height=24;
+
+      var hr=ws.getRow(5);
+      cols.forEach(function(col,i){ var cell=hr.getCell(i+1); cell.value=col.h; f(cell,{size:13,bold:true}); ctr(cell,true); cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFBDD7EE'}}; cell.border=border; });
+      hr.height=34; var HEADER_ROW=5, r=6;
+
+      supplies.forEach(function(s,idx){
+        var row=ws.getRow(r);
+        cols.forEach(function(col,i){
+          var cell=row.getCell(i+1); cell.border=border; f(cell,{size:14}); var v='';
+          if(i===0) v=idx+1; else if(i===1) v=s.col1||''; else if(i===2) v=s.col2||''; else if(i===3) v=s.col3||'';
+          cell.value=v; if(i===1) lft(cell); else ctr(cell);
+        });
+        row.height=20; r++;
+      });
+      if(!supplies.length){ // เว้นแถวเปล่าไว้ให้กรอกถ้าไม่มีข้อมูล
+        for(var k=0;k<15;k++){ var rr=ws.getRow(r); for(var ci=1;ci<=N;ci++){ var cell=rr.getCell(ci); cell.border=border; f(cell,{size:14}); if(ci===1){cell.value=k+1; ctr(cell);} else if(ci===2) lft(cell); else ctr(cell); } rr.height=20; r++; }
+      }
+
+      r+=2;
+      var a=Math.max(1,Math.ceil(N/3));
+      var sg=[[1,Math.min(a,N)],[Math.min(a+1,N),Math.min(2*a,N)],[Math.min(2*a+1,N),N]];
+      var labels=['ลงชื่อ ...................................... ผู้จัดทำ','ลงชื่อ ...................................... ผู้ตรวจสอบ','ลงชื่อ ...................................... ผู้อนุมัติ'];
+      function sig(text,c1,c2,rr){ if(c1>c2)c2=c1; ws.mergeCells(rr,c1,rr,c2); var cell=ws.getCell(rr,c1); cell.value=text; f(cell,{size:14}); ctr(cell); }
+      sg.forEach(function(g,i){sig(labels[i],g[0],g[1],r);}); r++;
+      sg.forEach(function(g){sig('( ...................................... )',g[0],g[1],r);}); r++;
+      sg.forEach(function(g){sig('ตำแหน่ง ..........................................',g[0],g[1],r);}); r++;
+      sg.forEach(function(g){sig('วันที่ .......... / .......... / ..........',g[0],g[1],r);});
+
+      ws.views=[{state:'frozen',ySplit:HEADER_ROW}];
+      try{ ws.pageSetup.printTitlesRow='1:'+HEADER_ROW; }catch(e){}
+
+      wb.xlsx.writeBuffer().then(function(buf){
+        var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        var el=document.createElement('a'); el.href=URL.createObjectURL(blob);
+        el.download=(cfg.filePrefix||'ฟอร์มเวชภัณฑ์มิใช่ยา')+'_'+new Date().toISOString().slice(0,10)+'.xlsx';
+        document.body.appendChild(el); el.click(); setTimeout(function(){URL.revokeObjectURL(el.href);el.remove();},1500);
+        hideLoading(); showToast('สร้างฟอร์มสำเร็จ ('+supplies.length+' รายการ)','success');
+      }).catch(function(e){ hideLoading(); showToast('สร้างไฟล์ไม่สำเร็จ: '+e.message,'error'); });
+    }catch(err){ hideLoading(); showToast('เกิดข้อผิดพลาด: '+err.message,'error'); }
+  });
+}
+
+function exportSupplyInForm(){
+  exportSupplyForm({ title:'ฟอร์มรับเวชภัณฑ์ที่มิใช่ยาเข้าคลัง', filePrefix:'ฟอร์มรับเข้า-เวชภัณฑ์มิใช่ยา',
+    extraCols:[{h:'คงเหลือยกมา',w:11},{h:'จำนวนรับเข้า',w:11},{h:'รวมคงเหลือ',w:11},{h:'หมายเหตุ',w:14}] });
+}
+function exportSupplyOutForm(){
+  exportSupplyForm({ title:'ฟอร์มจ่ายเวชภัณฑ์ที่มิใช่ยาออก', filePrefix:'ฟอร์มจ่ายออก-เวชภัณฑ์มิใช่ยา',
+    extraCols:[{h:'คงเหลือ',w:10},{h:'จำนวนจ่าย',w:10},{h:'คงเหลือหลังจ่าย',w:13},{h:'หมายเหตุ',w:14}] });
+}
+function exportSupplyInitForm(){
+  exportSupplyForm({ title:'ฟอร์มตั้งค่าสต็อกเริ่มต้น เวชภัณฑ์ที่มิใช่ยา', filePrefix:'ฟอร์มตั้งต้น-เวชภัณฑ์มิใช่ยา',
+    extraCols:[{h:'จำนวนตั้งต้น',w:12},{h:'LOT / รุ่น',w:12},{h:'วันหมดอายุ',w:13},{h:'หมายเหตุ',w:14}] });
+}
+
 window.addEventListener('load', function() {
   if (!document.getElementById('bottomNav')) {
     var nav       = document.createElement('nav');

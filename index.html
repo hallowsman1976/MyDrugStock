@@ -1171,6 +1171,15 @@ function buildMonthlyWorkbook(products, balMap, rateMap, bikMap, nBik){
   <div style="margin:14px 16px 6px;">
     <input id="msSearch" class="form-input" placeholder="ค้นหา..." oninput="filterMs()">
   </div>
+
+  <!-- พิมพ์ฟอร์ม Excel -->
+  <div style="margin:0 16px 8px;display:flex;gap:8px;flex-wrap:wrap;">
+    <span style="font-size:12.5px;color:var(--text-3);align-self:center;">พิมพ์ฟอร์ม:</span>
+    <button class="btn btn-secondary btn-sm" onclick="exportSupplyInitForm()">ตั้งค่าเริ่มต้น</button>
+    <button class="btn btn-secondary btn-sm" onclick="exportSupplyInForm()">รับเข้า</button>
+    <button class="btn btn-secondary btn-sm" onclick="exportSupplyOutForm()">จ่ายออก</button>
+  </div>
+
   <div class="section-title"><span id="msCount">รายการ</span></div>
 
   <div style="margin:0 16px;">
